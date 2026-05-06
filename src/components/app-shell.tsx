@@ -99,13 +99,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="space-y-1 px-3 pb-4 text-sm font-semibold text-slate-400">
-          <div className="relative mb-3 overflow-hidden rounded-md border border-white/10 bg-white/5 px-3 py-2">
-            <div className="absolute right-0 top-0 h-full w-8 bg-[linear-gradient(180deg,var(--pv-purple),var(--pv-coral),var(--pv-gold))] opacity-70" />
-            <div className="relative h-1 rounded-full bg-[linear-gradient(90deg,var(--pv-blue),var(--pv-cyan),var(--pv-purple),var(--pv-gold))]" />
-            <div className="relative mt-2 text-[10px] uppercase tracking-wide text-slate-400">
-              PDP Control Center
-            </div>
-          </div>
           <button className="flex h-9 w-full items-center gap-3 rounded px-2 hover:bg-slate-800 hover:text-white">
             <HelpCircle className="h-4 w-4" />
             Support

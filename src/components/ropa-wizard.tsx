@@ -362,11 +362,6 @@ export function RopaWizard({ departments }: { departments: Department[] }) {
           </CardContent>
         </Card>
 
-        <div className="h-32 rounded-lg bg-[linear-gradient(180deg,rgba(29,41,59,.15),rgba(29,41,59,.9)),url('https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=600&q=80')] bg-cover bg-center p-5 text-white">
-          <p className="mt-20 text-xs font-bold uppercase tracking-wide">
-            Compliance Visualization Engine
-          </p>
-        </div>
       </aside>
     </div>
   );
