@@ -19,16 +19,16 @@ type AssessmentWithRopa = typeof assessments.$inferSelect & {
 const templatePaths = {
   ropa:
     process.env.ROPA_EXCEL_TEMPLATE_PATH ??
-    "C:/Users/santu/OneDrive/Desktop/RoPA Template.xlsx",
+    path.join(process.cwd(), "templates", "ropa-template.xlsx"),
   dpia:
     process.env.DPIA_EXCEL_TEMPLATE_PATH ??
-    "C:/Users/santu/OneDrive/Desktop/DPIA.xlsx",
+    path.join(process.cwd(), "templates", "dpia.xlsx"),
   lia:
     process.env.LIA_EXCEL_TEMPLATE_PATH ??
-    "C:/Users/santu/OneDrive/Desktop/LIA.xlsx",
+    path.join(process.cwd(), "templates", "lia.xlsx"),
   tia:
     process.env.TIA_EXCEL_TEMPLATE_PATH ??
-    "C:/Users/santu/OneDrive/Desktop/Penilaian Instrumen Hukum Transfer Data Pribadi [V.1.1].xlsx",
+    path.join(process.cwd(), "templates", "tia.xlsx"),
 } as const;
 
 export async function buildRopaWorkbook(activity: RopaWithDepartment) {
