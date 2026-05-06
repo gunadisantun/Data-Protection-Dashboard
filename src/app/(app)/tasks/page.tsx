@@ -8,8 +8,10 @@ import { Table, TBody, TD, TH, THead } from "@/components/ui/table";
 import { listTasks } from "@/lib/data";
 import { formatDate } from "@/lib/utils";
 
-export default function TaskBoardPage() {
-  const tasks = listTasks();
+export const dynamic = "force-dynamic";
+
+export default async function TaskBoardPage() {
+  const tasks = await listTasks();
   const done = tasks.filter((task) => task.status === "Done").length;
   const open = tasks.length - done;
   const dueThisWeek = tasks.filter((task) => task.status !== "Done").length;

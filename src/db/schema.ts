@@ -1,13 +1,19 @@
 import { relations } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  boolean,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core";
 
-export const departments = sqliteTable("departments", {
+export const departments = pgTable("departments", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   createdAt: text("created_at").notNull(),
 });
 
-export const users = sqliteTable("users", {
+export const users = pgTable("users", {
   id: text("id").primaryKey(),
   fullName: text("full_name").notNull(),
   email: text("email").notNull().unique(),
@@ -16,24 +22,24 @@ export const users = sqliteTable("users", {
   createdAt: text("created_at").notNull(),
 });
 
-export const user = sqliteTable("user", {
+export const user = pgTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
-  emailVerified: integer("email_verified", { mode: "boolean" }).notNull(),
+  emailVerified: boolean("email_verified").notNull(),
   image: text("image"),
   role: text("role").notNull().default("PIC"),
   departmentId: text("department_id"),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  createdAt: timestamp("created_at").notNull(),
+  updatedAt: timestamp("updated_at").notNull(),
 });
 
-export const session = sqliteTable("session", {
+export const session = pgTable("session", {
   id: text("id").primaryKey(),
-  expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
   token: text("token").notNull().unique(),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  createdAt: timestamp("created_at").notNull(),
+  updatedAt: timestamp("updated_at").notNull(),
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
   userId: text("user_id")
@@ -41,7 +47,7 @@ export const session = sqliteTable("session", {
     .references(() => user.id, { onDelete: "cascade" }),
 });
 
-export const account = sqliteTable("account", {
+export const account = pgTable("account", {
   id: text("id").primaryKey(),
   accountId: text("account_id").notNull(),
   providerId: text("provider_id").notNull(),
@@ -51,28 +57,24 @@ export const account = sqliteTable("account", {
   accessToken: text("access_token"),
   refreshToken: text("refresh_token"),
   idToken: text("id_token"),
-  accessTokenExpiresAt: integer("access_token_expires_at", {
-    mode: "timestamp",
-  }),
-  refreshTokenExpiresAt: integer("refresh_token_expires_at", {
-    mode: "timestamp",
-  }),
+  accessTokenExpiresAt: timestamp("access_token_expires_at"),
+  refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
   scope: text("scope"),
   password: text("password"),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  createdAt: timestamp("created_at").notNull(),
+  updatedAt: timestamp("updated_at").notNull(),
 });
 
-export const verification = sqliteTable("verification", {
+export const verification = pgTable("verification", {
   id: text("id").primaryKey(),
   identifier: text("identifier").notNull(),
   value: text("value").notNull(),
-  expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
-  createdAt: integer("created_at", { mode: "timestamp" }),
-  updatedAt: integer("updated_at", { mode: "timestamp" }),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at"),
+  updatedAt: timestamp("updated_at"),
 });
 
-export const ropaActivities = sqliteTable("ropa_activities", {
+export const ropaActivities = pgTable("ropa_activities", {
   id: text("id").primaryKey(),
   activityName: text("activity_name").notNull(),
   processDescription: text("process_description").notNull(),
@@ -82,16 +84,16 @@ export const ropaActivities = sqliteTable("ropa_activities", {
   legalBasis: text("legal_basis").notNull(),
   processingPurpose: text("processing_purpose").notNull(),
   sourceMechanism: text("source_mechanism").notNull(),
-  subjectCategories: text("subject_categories", { mode: "json" })
+  subjectCategories: jsonb("subject_categories")
     .$type<string[]>()
     .notNull(),
-  personalDataTypes: text("personal_data_types", { mode: "json" })
+  personalDataTypes: jsonb("personal_data_types")
     .$type<string[]>()
     .notNull(),
   recipients: text("recipients").notNull(),
   processorContractLink: text("processor_contract_link").notNull(),
   dataReceiverRole: text("data_receiver_role").notNull(),
-  isCrossBorder: integer("is_cross_border", { mode: "boolean" }).notNull(),
+  isCrossBorder: boolean("is_cross_border").notNull(),
   destinationCountry: text("destination_country").notNull(),
   exportProtectionMechanism: text("export_protection_mechanism").notNull(),
   transferMechanism: text("transfer_mechanism").notNull(),
@@ -101,7 +103,7 @@ export const ropaActivities = sqliteTable("ropa_activities", {
   organizationalMeasures: text("organizational_measures").notNull(),
   dataSubjectRights: text("data_subject_rights").notNull(),
   riskAssessmentLevel: text("risk_assessment_level").notNull(),
-  highRiskCategories: text("high_risk_categories", { mode: "json" })
+  highRiskCategories: jsonb("high_risk_categories")
     .$type<string[]>()
     .notNull()
     .default([]),
@@ -113,9 +115,7 @@ export const ropaActivities = sqliteTable("ropa_activities", {
   residualRiskLevel: text("residual_risk_level").notNull().default("Medium"),
   riskMitigationPlan: text("risk_mitigation_plan").notNull().default(""),
   volumeLevel: text("volume_level").notNull(),
-  usesAutomatedDecisionMaking: integer("uses_automated_decision_making", {
-    mode: "boolean",
-  }).notNull(),
+  usesAutomatedDecisionMaking: boolean("uses_automated_decision_making").notNull(),
   previousProcess: text("previous_process").notNull(),
   nextProcess: text("next_process").notNull(),
   status: text("status", { enum: ["Draft", "Active", "Archived"] }).notNull(),
@@ -124,7 +124,7 @@ export const ropaActivities = sqliteTable("ropa_activities", {
   updatedAt: text("updated_at").notNull(),
 });
 
-export const assessments = sqliteTable("assessments", {
+export const assessments = pgTable("assessments", {
   id: text("id").primaryKey(),
   ropaId: text("ropa_id").notNull().references(() => ropaActivities.id),
   taskType: text("task_type", { enum: ["DPIA", "TIA", "LIA"] }).notNull(),
@@ -140,7 +140,7 @@ export const assessments = sqliteTable("assessments", {
   updatedAt: text("updated_at").notNull(),
 });
 
-export const auditEvents = sqliteTable("audit_events", {
+export const auditEvents = pgTable("audit_events", {
   id: text("id").primaryKey(),
   actorId: text("actor_id").references(() => users.id),
   eventType: text("event_type").notNull(),

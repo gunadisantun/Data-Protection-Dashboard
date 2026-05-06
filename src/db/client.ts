@@ -1,28 +1,28 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { mkdirSync } from "node:fs";
-import path from "node:path";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
 import * as schema from "@/db/schema";
 
-const databasePath = resolveDatabasePath();
-mkdirSync(path.dirname(databasePath), { recursive: true });
+const connectionString = process.env.DATABASE_URL;
 
-const sqlite = new Database(databasePath);
-sqlite.pragma("journal_mode = WAL");
-
-export const db = drizzle(sqlite, { schema });
-export { sqlite };
-
-function resolveDatabasePath() {
-  const configured = process.env.DATABASE_URL;
-
-  if (configured?.startsWith("file:")) {
-    return configured.slice("file:".length);
-  }
-
-  if (configured && configured !== ":memory:") {
-    return configured;
-  }
-
-  return path.join(process.cwd(), "data", "privacyvault.sqlite");
+if (!connectionString) {
+  throw new Error(
+    "DATABASE_URL is required. Add the Supabase pooled Postgres connection string to .env.local.",
+  );
 }
+
+const globalForDb = globalThis as typeof globalThis & {
+  privacyVaultSql?: postgres.Sql;
+};
+
+export const queryClient =
+  globalForDb.privacyVaultSql ??
+  postgres(connectionString, {
+    prepare: false,
+    ssl: "require",
+  });
+
+if (process.env.NODE_ENV !== "production") {
+  globalForDb.privacyVaultSql = queryClient;
+}
+
+export const db = drizzle(queryClient, { schema });

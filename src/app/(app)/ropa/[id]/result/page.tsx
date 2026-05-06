@@ -6,13 +6,15 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getRopaById } from "@/lib/data";
 
+export const dynamic = "force-dynamic";
+
 type ResultPageProps = {
   params: Promise<{ id: string }>;
 };
 
 export default async function RopaResultPage({ params }: ResultPageProps) {
   const { id } = await params;
-  const activity = getRopaById(id);
+  const activity = await getRopaById(id);
 
   if (!activity) {
     return (

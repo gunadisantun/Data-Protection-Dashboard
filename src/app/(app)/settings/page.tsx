@@ -2,9 +2,13 @@ import { Database, KeyRound, Users } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCurrentUser, getDepartments } from "@/lib/data";
 
-export default function SettingsPage() {
-  const user = getCurrentUser();
-  const departments = getDepartments();
+export const dynamic = "force-dynamic";
+
+export default async function SettingsPage() {
+  const [user, departments] = await Promise.all([
+    getCurrentUser(),
+    getDepartments(),
+  ]);
 
   return (
     <div className="mx-auto max-w-[900px] space-y-6">
@@ -40,12 +44,13 @@ export default function SettingsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Database className="h-5 w-5 text-blue-600" />
-            SQLite + Drizzle
+            Supabase Postgres + Drizzle
           </CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-slate-600">
-          Local data is stored at <code>data/privacyvault.sqlite</code>. Use{" "}
-          <code>npm run db:seed</code> to refresh the demo data.
+          Data utama tersimpan di Supabase Postgres. Use <code>npm run db:push</code>{" "}
+          untuk sinkronisasi schema dan <code>npm run db:seed</code> untuk refresh
+          master department/user development.
         </CardContent>
       </Card>
 

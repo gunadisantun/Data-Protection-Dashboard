@@ -12,7 +12,7 @@ export async function GET(request: Request) {
   const department = searchParams.get("department") ?? undefined;
   const risk = searchParams.get("risk") ?? undefined;
   const status = searchParams.get("status") ?? undefined;
-  const activities = listRopaForExport({ department, risk, status });
+  const activities = await listRopaForExport({ department, risk, status });
 
   if (!activities.length) {
     return NextResponse.json(
@@ -21,7 +21,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const departments = getDepartments();
+  const departments = await getDepartments();
   const departmentName =
     department && department !== "all"
       ? departments.find((item) => item.id === department)?.name

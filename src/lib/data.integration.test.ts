@@ -1,31 +1,29 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { CreateRopaPayload } from "@/lib/types";
 
-const tempDir = mkdtempSync(path.join(tmpdir(), "privacyvault-"));
+const testDatabaseUrl = process.env.TEST_DATABASE_URL;
+const describeWithDatabase = testDatabaseUrl ? describe : describe.skip;
 
 let createRopa: typeof import("@/lib/data").createRopa;
 let getRopaById: typeof import("@/lib/data").getRopaById;
 let resetAndSeedDatabase: typeof import("@/db/init").resetAndSeedDatabase;
-let sqlite: typeof import("@/db/client").sqlite;
+let queryClient: typeof import("@/db/client").queryClient;
 
-beforeAll(async () => {
-  process.env.DATABASE_URL = path.join(tempDir, "test.sqlite");
-  ({ resetAndSeedDatabase } = await import("@/db/init"));
-  ({ createRopa, getRopaById } = await import("@/lib/data"));
-  ({ sqlite } = await import("@/db/client"));
-  resetAndSeedDatabase();
-});
+describeWithDatabase("createRopa", () => {
+  beforeAll(async () => {
+    process.env.DATABASE_URL = testDatabaseUrl;
+    process.env.DIRECT_URL = testDatabaseUrl;
+    ({ resetAndSeedDatabase } = await import("@/db/init"));
+    ({ createRopa, getRopaById } = await import("@/lib/data"));
+    ({ queryClient } = await import("@/db/client"));
+    await resetAndSeedDatabase();
+  });
 
-afterAll(() => {
-  sqlite.close();
-  rmSync(tempDir, { recursive: true, force: true });
-});
+  afterAll(async () => {
+    await queryClient?.end();
+  });
 
-describe("createRopa", () => {
-  it("persists a RoPA activity and generated obligations atomically", () => {
+  it("persists a RoPA activity and generated obligations atomically", async () => {
     const payload: CreateRopaPayload = {
       activityName: "Global Customer Outreach Q3",
       processDescription:
@@ -61,8 +59,8 @@ describe("createRopa", () => {
       userId: "user-pic-marketing",
     };
 
-    const result = createRopa(payload);
-    const stored = getRopaById(result.id);
+    const result = await createRopa(payload);
+    const stored = await getRopaById(result.id);
 
     expect(result.triggers.map((trigger) => trigger.type)).toEqual([
       "LIA",

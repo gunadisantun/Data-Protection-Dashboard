@@ -9,6 +9,8 @@ import { Table, TBody, TD, TH, THead } from "@/components/ui/table";
 import { getDepartments, getRegistryStats, listRopa } from "@/lib/data";
 import { formatDate } from "@/lib/utils";
 
+export const dynamic = "force-dynamic";
+
 type RegistryPageProps = {
   searchParams: Promise<{
     department?: string;
@@ -19,9 +21,11 @@ type RegistryPageProps = {
 
 export default async function RegistryPage({ searchParams }: RegistryPageProps) {
   const filters = await searchParams;
-  const rows = listRopa(filters);
-  const departments = getDepartments();
-  const stats = getRegistryStats();
+  const [rows, departments, stats] = await Promise.all([
+    listRopa(filters),
+    getDepartments(),
+    getRegistryStats(),
+  ]);
   const exportParams = new URLSearchParams();
   const selectedDepartment =
     filters.department && filters.department !== "all"

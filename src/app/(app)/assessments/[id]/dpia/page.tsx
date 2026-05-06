@@ -3,13 +3,15 @@ import { DpiaWorkspace } from "@/components/dpia-workspace";
 import { getAssessmentById } from "@/lib/data";
 import { buildDpiaDraft, mergeSavedDpiaDraft } from "@/lib/dpia-draft";
 
+export const dynamic = "force-dynamic";
+
 type DpiaPageProps = {
   params: Promise<{ id: string }>;
 };
 
 export default async function DpiaPage({ params }: DpiaPageProps) {
   const { id } = await params;
-  const assessment = getAssessmentById(id);
+  const assessment = await getAssessmentById(id);
 
   if (!assessment || assessment.taskType !== "DPIA") {
     notFound();

@@ -8,8 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { listTasks } from "@/lib/data";
 import { formatDate } from "@/lib/utils";
 
-export default function AssessmentsPage() {
-  const tasks = listTasks();
+export const dynamic = "force-dynamic";
+
+export default async function AssessmentsPage() {
+  const tasks = await listTasks();
 
   return (
     <div className="mx-auto max-w-[1180px] space-y-6">

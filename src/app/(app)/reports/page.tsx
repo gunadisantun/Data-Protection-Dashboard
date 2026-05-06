@@ -5,9 +5,13 @@ import { Table, TBody, TD, TH, THead } from "@/components/ui/table";
 import { getAuditEvents, getReportSummary } from "@/lib/data";
 import { formatDate } from "@/lib/utils";
 
-export default function ReportsPage() {
-  const summary = getReportSummary();
-  const events = getAuditEvents(12);
+export const dynamic = "force-dynamic";
+
+export default async function ReportsPage() {
+  const [summary, events] = await Promise.all([
+    getReportSummary(),
+    getAuditEvents(12),
+  ]);
   const totalRisk =
     summary.riskDistribution.Low +
     summary.riskDistribution.Medium +

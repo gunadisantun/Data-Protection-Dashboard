@@ -7,7 +7,7 @@ type RouteContext = {
 
 export async function DELETE(_request: Request, context: RouteContext) {
   const { id } = await context.params;
-  const deleted = deleteRopa(id);
+  const deleted = await deleteRopa(id);
 
   if (!deleted) {
     return NextResponse.json({ error: "RoPA not found" }, { status: 404 });

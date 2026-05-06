@@ -77,10 +77,10 @@ const assessmentConfig: Record<
   },
 };
 
-export function AssessmentTypeDashboard({ type }: AssessmentTypeDashboardProps) {
+export async function AssessmentTypeDashboard({ type }: AssessmentTypeDashboardProps) {
   const config = assessmentConfig[type];
   const Icon = config.icon;
-  const tasks = listTasks().filter((task) => task.taskType === type);
+  const tasks = (await listTasks()).filter((task) => task.taskType === type);
   const openTasks = tasks.filter((task) => task.status !== "Done");
   const doneTasks = tasks.filter((task) => task.status === "Done");
   const inProgressTasks = tasks.filter((task) => task.status === "In Progress");

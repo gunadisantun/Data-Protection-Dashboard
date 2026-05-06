@@ -7,6 +7,6 @@ export async function GET(request: Request) {
   const status = searchParams.get("status") as AssessmentStatus | null;
 
   return NextResponse.json({
-    data: listTasks(status ? [status] : undefined),
+    data: await listTasks(status ? [status] : undefined),
   });
 }

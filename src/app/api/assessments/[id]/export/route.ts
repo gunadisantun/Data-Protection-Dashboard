@@ -28,7 +28,7 @@ type RouteContext = {
 
 export async function GET(_request: Request, context: RouteContext) {
   const { id } = await context.params;
-  const assessment = getAssessmentById(id);
+  const assessment = await getAssessmentById(id);
 
   if (!assessment) {
     return NextResponse.json({ error: "Assessment not found" }, { status: 404 });

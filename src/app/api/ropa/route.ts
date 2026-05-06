@@ -6,7 +6,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
 
   return NextResponse.json({
-    data: listRopa({
+    data: await listRopa({
       department: searchParams.get("department") ?? undefined,
       risk: searchParams.get("risk") ?? undefined,
       status: searchParams.get("status") ?? undefined,
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = createRopa(parsed.data);
+  const result = await createRopa(parsed.data);
 
   return NextResponse.json({
     ...result,

@@ -21,7 +21,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     );
   }
 
-  const task = updateTask(id, parsed.data);
+  const task = await updateTask(id, parsed.data);
 
   if (!task) {
     return NextResponse.json({ error: "Task not found" }, { status: 404 });
@@ -32,7 +32,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
 export async function DELETE(_request: Request, context: RouteContext) {
   const { id } = await context.params;
-  const deleted = deleteTask(id);
+  const deleted = await deleteTask(id);
 
   if (!deleted) {
     return NextResponse.json({ error: "Task not found" }, { status: 404 });

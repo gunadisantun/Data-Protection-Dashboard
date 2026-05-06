@@ -16,21 +16,21 @@ import type {
   RopaListFilters,
 } from "@/lib/types";
 
-export function getCurrentUser() {
-  ensureDatabase();
+export async function getCurrentUser() {
+  await ensureDatabase();
   return db.query.users.findFirst({
     where: eq(users.id, "user-admin"),
     with: { department: true },
-  }).sync();
+  });
 }
 
-export function getDepartments() {
-  ensureDatabase();
-  return db.select().from(departments).orderBy(departments.name).all();
+export async function getDepartments() {
+  await ensureDatabase();
+  return db.select().from(departments).orderBy(departments.name);
 }
 
-export function listRopa(filters: RopaListFilters = {}) {
-  ensureDatabase();
+export async function listRopa(filters: RopaListFilters = {}) {
+  await ensureDatabase();
   const conditions = [
     filters.department && filters.department !== "all"
       ? eq(ropaActivities.departmentId, filters.department)
@@ -41,9 +41,9 @@ export function listRopa(filters: RopaListFilters = {}) {
     filters.status && filters.status !== "all"
       ? eq(ropaActivities.status, filters.status as "Draft" | "Active" | "Archived")
       : undefined,
-  ].filter(Boolean);
+  ].filter((condition) => Boolean(condition));
 
-  const rows = db
+  const rows = await db
     .select({
       id: ropaActivities.id,
       activityName: ropaActivities.activityName,
@@ -60,11 +60,10 @@ export function listRopa(filters: RopaListFilters = {}) {
     .from(ropaActivities)
     .innerJoin(departments, eq(ropaActivities.departmentId, departments.id))
     .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(desc(ropaActivities.createdAt))
-    .all();
+    .orderBy(desc(ropaActivities.createdAt));
 
   const obligations = rows.length
-    ? db
+    ? await db
         .select({
           id: assessments.id,
           ropaId: assessments.ropaId,
@@ -74,7 +73,6 @@ export function listRopa(filters: RopaListFilters = {}) {
         })
         .from(assessments)
         .where(inArray(assessments.ropaId, rows.map((row) => row.id)))
-        .all()
     : [];
 
   const obligationsByRopa = obligations.reduce<
@@ -94,30 +92,31 @@ export function listRopa(filters: RopaListFilters = {}) {
   }));
 }
 
-export function listRopaForExport(filters: RopaListFilters = {}) {
-  const rows = listRopa(filters);
+export async function listRopaForExport(filters: RopaListFilters = {}) {
+  const rows = await listRopa(filters);
+  const activities = await Promise.all(rows.map((row) => getRopaById(row.id)));
 
-  return rows
-    .map((row) => getRopaById(row.id))
-    .filter(
-      (activity): activity is NonNullable<ReturnType<typeof getRopaById>> =>
-        Boolean(activity),
-    );
+  return activities.filter(
+    (
+      activity,
+    ): activity is NonNullable<Awaited<ReturnType<typeof getRopaById>>> =>
+      Boolean(activity),
+  );
 }
 
-export function getRopaById(id: string) {
-  ensureDatabase();
+export async function getRopaById(id: string) {
+  await ensureDatabase();
   return db.query.ropaActivities.findFirst({
     where: eq(ropaActivities.id, id),
     with: {
       department: true,
       assessments: true,
     },
-  }).sync();
+  });
 }
 
-export function listTasks(statuses?: AssessmentStatus[]) {
-  ensureDatabase();
+export async function listTasks(statuses?: AssessmentStatus[]) {
+  await ensureDatabase();
   const where =
     statuses && statuses.length
       ? inArray(assessments.status, statuses)
@@ -144,38 +143,34 @@ export function listTasks(statuses?: AssessmentStatus[]) {
     .innerJoin(ropaActivities, eq(assessments.ropaId, ropaActivities.id))
     .innerJoin(departments, eq(assessments.departmentId, departments.id))
     .where(where)
-    .orderBy(assessments.dueDate)
-    .all();
+    .orderBy(assessments.dueDate);
 }
 
-export function getAssessmentById(id: string) {
-  ensureDatabase();
+export async function getAssessmentById(id: string) {
+  await ensureDatabase();
 
-  return db.query.assessments
-    .findFirst({
-      where: eq(assessments.id, id),
-      with: {
-        department: true,
-        ropa: true,
-      },
-    })
-    .sync();
+  return db.query.assessments.findFirst({
+    where: eq(assessments.id, id),
+    with: {
+      department: true,
+      ropa: true,
+    },
+  });
 }
 
-export function getAuditEvents(limit = 8) {
-  ensureDatabase();
+export async function getAuditEvents(limit = 8) {
+  await ensureDatabase();
   return db
     .select()
     .from(auditEvents)
     .orderBy(desc(auditEvents.createdAt))
-    .limit(limit)
-    .all();
+    .limit(limit);
 }
 
-export function getDashboardSummary() {
-  ensureDatabase();
-  const allRopa = listRopa();
-  const allTasks = listTasks();
+export async function getDashboardSummary() {
+  await ensureDatabase();
+  const allRopa = await listRopa();
+  const allTasks = await listTasks();
   const openTasks = allTasks.filter((task) => task.status !== "Done");
   const criticalTasks = allTasks.filter((task) => task.severity === "Critical");
   const activeRopa = allRopa.filter((activity) => activity.status === "Active");
@@ -198,7 +193,7 @@ export function getDashboardSummary() {
     pendingTasks: openTasks.length,
     criticalRisks: criticalTasks.length,
     controlsActive: 0,
-    recentActivity: getAuditEvents(4),
+    recentActivity: await getAuditEvents(4),
     urgentTasks: openTasks.slice(0, 6),
     riskDistribution: {
       Low: allRopa.filter((activity) => activity.riskAssessmentLevel === "Low").length,
@@ -209,8 +204,8 @@ export function getDashboardSummary() {
   };
 }
 
-export function createRopa(payload: CreateRopaPayload) {
-  ensureDatabase();
+export async function createRopa(payload: CreateRopaPayload) {
+  await ensureDatabase();
   const now = new Date().toISOString();
   const ropaId = `ropa-${crypto.randomUUID()}`;
   const triggers = analyzeRopa({
@@ -224,90 +219,84 @@ export function createRopa(payload: CreateRopaPayload) {
     usesAutomatedDecisionMaking: payload.usesAutomatedDecisionMaking,
   });
 
-  db.transaction((tx) => {
-    tx.insert(ropaActivities)
-      .values({
-        id: ropaId,
-        activityName: payload.activityName,
-        processDescription: payload.processDescription,
-        departmentId: payload.departmentId,
-        picName: payload.picName,
-        picEmail: payload.picEmail,
-        legalBasis: payload.legalBasis,
-        processingPurpose: payload.processingPurpose,
-        sourceMechanism: payload.sourceMechanism,
-        subjectCategories: payload.subjectCategories,
-        personalDataTypes: payload.personalDataTypes,
-        recipients: payload.recipients,
-        processorContractLink: payload.processorContractLink,
-        dataReceiverRole: payload.dataReceiverRole,
-        isCrossBorder: payload.isCrossBorder,
-        destinationCountry: payload.destinationCountry,
-        exportProtectionMechanism: payload.exportProtectionMechanism,
-        transferMechanism: payload.transferMechanism,
-        storageLocation: payload.storageLocation,
-        retentionPeriod: payload.retentionPeriod,
-        technicalMeasures: payload.technicalMeasures,
-        organizationalMeasures: payload.organizationalMeasures,
-        dataSubjectRights: payload.dataSubjectRights,
-        riskAssessmentLevel: payload.riskAssessmentLevel,
-        highRiskCategories: payload.highRiskCategories ?? [],
-        riskRegisterReference: payload.riskRegisterReference ?? "",
-        riskLikelihood: payload.riskLikelihood ?? payload.riskAssessmentLevel,
-        riskImpact: payload.riskImpact ?? payload.riskAssessmentLevel,
-        riskContext: payload.riskContext ?? "",
-        existingControls: payload.existingControls ?? "",
-        residualRiskLevel: payload.residualRiskLevel ?? payload.riskAssessmentLevel,
-        riskMitigationPlan: payload.riskMitigationPlan ?? "",
-        volumeLevel: payload.volumeLevel,
-        usesAutomatedDecisionMaking: payload.usesAutomatedDecisionMaking,
-        previousProcess: payload.previousProcess,
-        nextProcess: payload.nextProcess,
-        status: payload.status ?? "Active",
-        userId: payload.userId ?? "user-admin",
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
+  await db.transaction(async (tx) => {
+    await tx.insert(ropaActivities).values({
+      id: ropaId,
+      activityName: payload.activityName,
+      processDescription: payload.processDescription,
+      departmentId: payload.departmentId,
+      picName: payload.picName,
+      picEmail: payload.picEmail,
+      legalBasis: payload.legalBasis,
+      processingPurpose: payload.processingPurpose,
+      sourceMechanism: payload.sourceMechanism,
+      subjectCategories: payload.subjectCategories,
+      personalDataTypes: payload.personalDataTypes,
+      recipients: payload.recipients,
+      processorContractLink: payload.processorContractLink,
+      dataReceiverRole: payload.dataReceiverRole,
+      isCrossBorder: payload.isCrossBorder,
+      destinationCountry: payload.destinationCountry,
+      exportProtectionMechanism: payload.exportProtectionMechanism,
+      transferMechanism: payload.transferMechanism,
+      storageLocation: payload.storageLocation,
+      retentionPeriod: payload.retentionPeriod,
+      technicalMeasures: payload.technicalMeasures,
+      organizationalMeasures: payload.organizationalMeasures,
+      dataSubjectRights: payload.dataSubjectRights,
+      riskAssessmentLevel: payload.riskAssessmentLevel,
+      highRiskCategories: payload.highRiskCategories ?? [],
+      riskRegisterReference: payload.riskRegisterReference ?? "",
+      riskLikelihood: payload.riskLikelihood ?? payload.riskAssessmentLevel,
+      riskImpact: payload.riskImpact ?? payload.riskAssessmentLevel,
+      riskContext: payload.riskContext ?? "",
+      existingControls: payload.existingControls ?? "",
+      residualRiskLevel: payload.residualRiskLevel ?? payload.riskAssessmentLevel,
+      riskMitigationPlan: payload.riskMitigationPlan ?? "",
+      volumeLevel: payload.volumeLevel,
+      usesAutomatedDecisionMaking: payload.usesAutomatedDecisionMaking,
+      previousProcess: payload.previousProcess,
+      nextProcess: payload.nextProcess,
+      status: payload.status ?? "Active",
+      userId: payload.userId ?? "user-admin",
+      createdAt: now,
+      updatedAt: now,
+    });
 
     if (triggers.length) {
-      tx.insert(assessments)
-        .values(
-          triggers.map((trigger, index) => {
-            const dueDate = new Date();
-            dueDate.setDate(dueDate.getDate() + (trigger.type === "DPIA" ? 3 : 7));
+      await tx.insert(assessments).values(
+        triggers.map((trigger, index) => {
+          const dueDate = new Date();
+          dueDate.setDate(dueDate.getDate() + (trigger.type === "DPIA" ? 3 : 7));
 
-            return {
-              id: `task-${crypto.randomUUID()}`,
-              ropaId,
-              taskType: trigger.type,
-              status: "Todo" as const,
-              severity: trigger.severity,
-              title: trigger.title,
-              reason: trigger.reason,
-              notes: "",
-              dueDate: dueDate.toISOString(),
-              picName: payload.picName,
-              departmentId: payload.departmentId,
-              createdAt: new Date(Date.now() + index).toISOString(),
-              updatedAt: now,
-            };
-          }),
-        )
-        .run();
+          return {
+            id: `task-${crypto.randomUUID()}`,
+            ropaId,
+            taskType: trigger.type,
+            status: "Todo" as const,
+            severity: trigger.severity,
+            title: trigger.title,
+            reason: trigger.reason,
+            notes: "",
+            dueDate: dueDate.toISOString(),
+            picName: payload.picName,
+            departmentId: payload.departmentId,
+            createdAt: new Date(Date.now() + index).toISOString(),
+            updatedAt: now,
+          };
+        }),
+      );
     }
 
-    tx.insert(auditEvents)
-      .values({
-        id: `audit-${crypto.randomUUID()}`,
-        actorId: payload.userId ?? "user-admin",
-        eventType: "ropa.submitted",
-        entityType: "ropa",
-        entityId: ropaId,
-        message: `${payload.picName} submitted a new RoPA entry for ${payload.activityName}.`,
-        createdAt: now,
-      })
-      .run();
+    await tx.insert(auditEvents).values({
+      id: `audit-${crypto.randomUUID()}`,
+      actorId: payload.userId ?? "user-admin",
+      eventType: "ropa.submitted",
+      entityType: "ropa",
+      entityId: ropaId,
+      message: `${payload.picName} submitted a new RoPA entry for ${payload.activityName}.`,
+      createdAt: now,
+    });
   });
 
   return {
@@ -316,84 +305,80 @@ export function createRopa(payload: CreateRopaPayload) {
   };
 }
 
-export function updateTask(
+export async function updateTask(
   id: string,
   values: { status?: AssessmentStatus; notes?: string },
 ) {
-  ensureDatabase();
+  await ensureDatabase();
   const updatedAt = new Date().toISOString();
 
-  db.update(assessments)
+  await db
+    .update(assessments)
     .set({
       ...(values.status ? { status: values.status } : {}),
       ...(typeof values.notes === "string" ? { notes: values.notes } : {}),
       updatedAt,
     })
-    .where(eq(assessments.id, id))
-    .run();
+    .where(eq(assessments.id, id));
 
   return db.query.assessments.findFirst({
     where: eq(assessments.id, id),
-  }).sync();
+  });
 }
 
-export function deleteTask(id: string) {
-  ensureDatabase();
-  const task = db.query.assessments
-    .findFirst({
-      where: eq(assessments.id, id),
-    })
-    .sync();
+export async function deleteTask(id: string) {
+  await ensureDatabase();
+  const task = await db.query.assessments.findFirst({
+    where: eq(assessments.id, id),
+  });
 
   if (!task) {
     return false;
   }
 
-  db.transaction((tx) => {
-    tx.delete(auditEvents).where(eq(auditEvents.entityId, id)).run();
-    tx.delete(assessments).where(eq(assessments.id, id)).run();
+  await db.transaction(async (tx) => {
+    await tx.delete(auditEvents).where(eq(auditEvents.entityId, id));
+    await tx.delete(assessments).where(eq(assessments.id, id));
   });
 
   return true;
 }
 
-export function deleteRopa(id: string) {
-  ensureDatabase();
-  const activity = db.query.ropaActivities
-    .findFirst({
-      where: eq(ropaActivities.id, id),
-    })
-    .sync();
+export async function deleteRopa(id: string) {
+  await ensureDatabase();
+  const activity = await db.query.ropaActivities.findFirst({
+    where: eq(ropaActivities.id, id),
+  });
 
   if (!activity) {
     return false;
   }
 
-  db.transaction((tx) => {
-    const linkedAssessmentIds = tx
-      .select({ id: assessments.id })
-      .from(assessments)
-      .where(eq(assessments.ropaId, id))
-      .all()
-      .map((assessment) => assessment.id);
+  await db.transaction(async (tx) => {
+    const linkedAssessmentIds = (
+      await tx
+        .select({ id: assessments.id })
+        .from(assessments)
+        .where(eq(assessments.ropaId, id))
+    ).map((assessment) => assessment.id);
 
     if (linkedAssessmentIds.length) {
-      tx.delete(auditEvents)
-        .where(inArray(auditEvents.entityId, linkedAssessmentIds))
-        .run();
+      await tx
+        .delete(auditEvents)
+        .where(inArray(auditEvents.entityId, linkedAssessmentIds));
     }
 
-    tx.delete(auditEvents).where(eq(auditEvents.entityId, id)).run();
-    tx.delete(assessments).where(eq(assessments.ropaId, id)).run();
-    tx.delete(ropaActivities).where(eq(ropaActivities.id, id)).run();
+    await tx.delete(auditEvents).where(eq(auditEvents.entityId, id));
+    await tx.delete(assessments).where(eq(assessments.ropaId, id));
+    await tx.delete(ropaActivities).where(eq(ropaActivities.id, id));
   });
 
   return true;
 }
 
-export function getReportSummary() {
-  const summary = getDashboardSummary();
-  const tasks = listTasks();
+export async function getReportSummary() {
+  const summary = await getDashboardSummary();
+  const tasks = await listTasks();
   const byType = (type: AssessmentType) =>
     tasks.filter((task) => task.taskType === type);
 
@@ -413,20 +398,19 @@ export function getReportSummary() {
   };
 }
 
-export function getRegistryStats() {
-  ensureDatabase();
-  const rows = db
+export async function getRegistryStats() {
+  await ensureDatabase();
+  const rows = await db
     .select({
       status: ropaActivities.status,
       count: sql<number>`count(*)`,
     })
     .from(ropaActivities)
-    .groupBy(ropaActivities.status)
-    .all();
+    .groupBy(ropaActivities.status);
 
   return {
-    active: rows.find((row) => row.status === "Active")?.count ?? 0,
-    drafts: rows.find((row) => row.status === "Draft")?.count ?? 0,
+    active: Number(rows.find((row) => row.status === "Active")?.count ?? 0),
+    drafts: Number(rows.find((row) => row.status === "Draft")?.count ?? 0),
   };
 }
 

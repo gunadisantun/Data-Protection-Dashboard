@@ -17,8 +17,10 @@ import { Table, TBody, TD, TH, THead } from "@/components/ui/table";
 import { getDashboardSummary } from "@/lib/data";
 import { formatDate } from "@/lib/utils";
 
-export default function DashboardPage() {
-  const summary = getDashboardSummary();
+export const dynamic = "force-dynamic";
+
+export default async function DashboardPage() {
+  const summary = await getDashboardSummary();
 
   return (
     <div className="mx-auto max-w-[1180px] space-y-6">

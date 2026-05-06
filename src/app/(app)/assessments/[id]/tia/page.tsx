@@ -3,13 +3,15 @@ import { TiaWorkspace } from "@/components/tia-workspace";
 import { getAssessmentById } from "@/lib/data";
 import { buildTiaDraft, mergeSavedTiaDraft } from "@/lib/tia-draft";
 
+export const dynamic = "force-dynamic";
+
 type TiaPageProps = {
   params: Promise<{ id: string }>;
 };
 
 export default async function TiaPage({ params }: TiaPageProps) {
   const { id } = await params;
-  const assessment = getAssessmentById(id);
+  const assessment = await getAssessmentById(id);
 
   if (!assessment || assessment.taskType !== "TIA") {
     notFound();

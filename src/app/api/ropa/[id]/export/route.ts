@@ -13,7 +13,7 @@ type RouteContext = {
 
 export async function GET(_request: Request, context: RouteContext) {
   const { id } = await context.params;
-  const activity = getRopaById(id);
+  const activity = await getRopaById(id);
 
   if (!activity) {
     return NextResponse.json({ error: "RoPA not found" }, { status: 404 });
