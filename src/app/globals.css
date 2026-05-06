@@ -1,0 +1,126 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f8f9ff;
+  --foreground: #0f172a;
+  --pv-navy: #172238;
+  --pv-navy-soft: #20304d;
+  --pv-blue: #1f66f2;
+  --pv-cyan: #22d8ef;
+  --pv-purple: #b642e6;
+  --pv-magenta: #d75ecb;
+  --pv-gold: #f3bd2f;
+  --pv-coral: #df8b6b;
+  --pv-panel: #ffffff;
+  --pv-muted: #eef3ff;
+  --pv-gradient: linear-gradient(135deg, #1f66f2 0%, #22d8ef 38%, #b642e6 68%, #f3bd2f 100%);
+  --pv-font-body: Inter, Arial, Helvetica, sans-serif;
+  --pv-font-ui: Roboto, Inter, Arial, Helvetica, sans-serif;
+  --pv-font-form: "Open Sans", Inter, Arial, Helvetica, sans-serif;
+  --pv-font-metric: Lato, Inter, Arial, Helvetica, sans-serif;
+  --pv-font-display: "Switzer", Inter, Arial, Helvetica, sans-serif;
+  --pv-weight-body: 400;
+  --pv-weight-ui: 500;
+  --pv-weight-form: 400;
+  --pv-weight-label: 600;
+  --pv-weight-heading: 800;
+  --pv-weight-metric: 700;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--pv-font-body);
+  --font-display: var(--pv-font-display);
+  --font-ui: var(--pv-font-ui);
+  --font-form: var(--pv-font-form);
+  --font-metric: var(--pv-font-metric);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background:
+    linear-gradient(180deg, rgba(34, 216, 239, 0.06) 0%, rgba(248, 249, 255, 0) 240px),
+    var(--background);
+  color: var(--foreground);
+  font-family: var(--pv-font-body);
+  font-weight: var(--pv-weight-body);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--pv-font-display);
+  font-weight: var(--pv-weight-heading);
+}
+
+a {
+  text-decoration: none;
+}
+
+button,
+label,
+th,
+.pv-ui {
+  font-family: var(--pv-font-ui);
+  font-weight: var(--pv-weight-ui);
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+input,
+textarea,
+select,
+.pv-form {
+  font-family: var(--pv-font-form);
+  font-weight: var(--pv-weight-form);
+}
+
+.pv-label {
+  font-family: var(--pv-font-ui);
+  font-weight: var(--pv-weight-label);
+}
+
+.pv-display {
+  font-family: var(--pv-font-display);
+  font-weight: var(--pv-weight-heading);
+}
+
+.pv-metric {
+  font-family: var(--pv-font-metric);
+  font-weight: var(--pv-weight-metric);
+}
+
+.pv-gradient-text {
+  background: var(--pv-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.pv-gradient-border {
+  position: relative;
+}
+
+.pv-gradient-border::before {
+  background: var(--pv-gradient);
+  border-radius: inherit;
+  content: "";
+  inset: 0;
+  opacity: 0.95;
+  padding: 1px;
+  pointer-events: none;
+  position: absolute;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
