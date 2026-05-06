@@ -943,8 +943,8 @@ function SecurityStep({
     <div className="grid gap-5 md:grid-cols-2">
       <Field
         label="Penyimpanan"
-        requirement="required"
-        help="Wajib, minimal 2 karakter. Isi lokasi/sistem penyimpanan, misalnya Jakarta private cloud atau HRIS."
+        requirement="optional"
+        help="Opsional. Isi lokasi/sistem penyimpanan, misalnya Jakarta private cloud atau HRIS."
       >
         <Input
           value={data.storageLocation}
@@ -954,8 +954,8 @@ function SecurityStep({
       </Field>
       <Field
         label="Retensi"
-        requirement="required"
-        help="Wajib, minimal 2 karakter. Isi periode retensi, misalnya 2 tahun, 7 tahun, atau sampai consent ditarik."
+        requirement="optional"
+        help="Opsional. Isi periode retensi, misalnya 2 tahun, 7 tahun, atau sampai consent ditarik."
       >
         <Input
           value={data.retentionPeriod}
