@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Download, Filter, Plus, ShieldCheck } from "lucide-react";
 import { DeleteActionButton } from "@/components/delete-action-button";
+import { RopaImportButton } from "@/components/ropa-import-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -71,6 +72,7 @@ export default async function RegistryPage({ searchParams }: RegistryPageProps) 
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <RopaImportButton />
           <Link
             href={exportHref}
             className={buttonVariantSecondary(rows.length === 0)}
