@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   Download,
+  ExternalLink,
   FileCheck2,
   Globe2,
   PencilLine,
@@ -86,6 +87,7 @@ export function TiaWorkspace({
   const [tiaDraft, setTiaDraft] = useState(() => recalculateTiaDraft(draft));
   const [status, setStatus] = useState(initialStatus);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [canEditCountryReference, setCanEditCountryReference] = useState(false);
   const [canEditRisks, setCanEditRisks] = useState(false);
   const [canEditEvaluation, setCanEditEvaluation] = useState(false);
 
@@ -359,8 +361,25 @@ export function TiaWorkspace({
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-xl">Country List Reference</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
+          <div>
+            <CardTitle className="text-xl">Country List Reference</CardTitle>
+            {!canEditCountryReference ? (
+              <p className="mt-1 text-sm text-slate-500">
+                Referensi negara dikunci. Klik edit untuk mengubah kategori atau
+                sumber regulasi manual.
+              </p>
+            ) : null}
+          </div>
+          <Button
+            variant={canEditCountryReference ? "secondary" : "default"}
+            size="sm"
+            onClick={() => setCanEditCountryReference(true)}
+            disabled={canEditCountryReference}
+          >
+            <PencilLine className="h-4 w-4" />
+            {canEditCountryReference ? "Mode Edit Aktif" : "Edit Reference"}
+          </Button>
         </CardHeader>
         <CardContent className="grid gap-4 lg:grid-cols-[1fr_1.25fr]">
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
@@ -378,16 +397,24 @@ export function TiaWorkspace({
               label="Kategori Regulasi"
               value={tiaDraft.transfer.regulationCategory}
               options={regulationCategories}
+              disabled={!canEditCountryReference}
               onChange={(value) =>
                 updateTransfer("regulationCategory", value as TiaRegulationCategory)
               }
             />
-            <FieldTextarea
-              label="Sumber Regulasi"
-              value={tiaDraft.transfer.regulationSource}
-              onChange={(value) => updateTransfer("regulationSource", value)}
-              minRows={3}
-            />
+            {canEditCountryReference ? (
+              <FieldTextarea
+                label="Sumber Regulasi"
+                value={tiaDraft.transfer.regulationSource}
+                onChange={(value) => updateTransfer("regulationSource", value)}
+                minRows={3}
+              />
+            ) : (
+              <ReadOnlyLinkField
+                label="Sumber Regulasi"
+                value={tiaDraft.transfer.regulationSource}
+              />
+            )}
           </div>
         </CardContent>
       </Card>
@@ -737,11 +764,13 @@ function FieldSelect({
   value,
   options,
   onChange,
+  disabled = false,
 }: {
   label: string;
   value: string;
   options: string[];
   onChange: (value: string) => void;
+  disabled?: boolean;
 }) {
   return (
     <label className="block">
@@ -751,7 +780,13 @@ function FieldSelect({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-2 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+        disabled={disabled}
+        className={cn(
+          "mt-2 h-10 w-full rounded-md border border-slate-200 px-3 text-sm shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100",
+          disabled
+            ? "cursor-not-allowed bg-slate-100 text-slate-500"
+            : "bg-white text-slate-950",
+        )}
       >
         {options.map((option) => (
           <option key={option} value={option}>
@@ -760,6 +795,42 @@ function FieldSelect({
         ))}
       </select>
     </label>
+  );
+}
+
+function ReadOnlyLinkField({ label, value }: { label: string; value: string }) {
+  const segments = linkifySource(value);
+
+  return (
+    <div className="block">
+      <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+        {label}
+      </span>
+      <div className="mt-2 min-h-20 rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-sm leading-6 text-slate-600 shadow-sm">
+        {segments.length ? (
+          segments.map((segment, index) =>
+            segment.href ? (
+              <a
+                key={`${segment.href}-${index}`}
+                href={segment.href}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 break-all font-semibold text-blue-600 underline-offset-2 hover:underline"
+              >
+                {segment.text}
+                <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+              </a>
+            ) : (
+              <span key={`${segment.text}-${index}`} className="whitespace-pre-wrap">
+                {segment.text}
+              </span>
+            ),
+          )
+        ) : (
+          <span className="text-slate-400">Belum ada sumber regulasi.</span>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -819,4 +890,44 @@ function evaluationTone(status: string) {
   }
 
   return "green" as const;
+}
+
+function linkifySource(value: string) {
+  const segments: Array<{ text: string; href?: string }> = [];
+  const urlPattern = /https?:\/\/[^\s]+/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = urlPattern.exec(value)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({ text: value.slice(lastIndex, match.index) });
+    }
+
+    const { url, trailing } = trimTrailingUrlPunctuation(match[0]);
+    segments.push({ text: url, href: url });
+
+    if (trailing) {
+      segments.push({ text: trailing });
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < value.length) {
+    segments.push({ text: value.slice(lastIndex) });
+  }
+
+  return segments.filter((segment) => segment.text.length > 0);
+}
+
+function trimTrailingUrlPunctuation(rawUrl: string) {
+  let url = rawUrl;
+  let trailing = "";
+
+  while (/[),.;:!?]$/.test(url)) {
+    trailing = `${url.at(-1) ?? ""}${trailing}`;
+    url = url.slice(0, -1);
+  }
+
+  return { url, trailing };
 }
