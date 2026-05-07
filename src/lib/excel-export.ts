@@ -31,6 +31,10 @@ const templatePaths = {
     path.join(process.cwd(), "templates", "tia.xlsx"),
 } as const;
 
+export function getExcelTemplatePath(kind: keyof typeof templatePaths) {
+  return templatePaths[kind];
+}
+
 export async function buildRopaWorkbook(activity: RopaWithDepartment) {
   return buildRopaRegistryWorkbook([activity]);
 }

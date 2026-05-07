@@ -74,6 +74,13 @@ export default async function RegistryPage({ searchParams }: RegistryPageProps) 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <RopaImportButton />
           <Link
+            href="/api/ropa/template"
+            className={buttonVariantSecondary(false)}
+          >
+            <Download className="h-4 w-4" />
+            Download Template
+          </Link>
+          <Link
             href={exportHref}
             className={buttonVariantSecondary(rows.length === 0)}
             aria-disabled={rows.length === 0}
