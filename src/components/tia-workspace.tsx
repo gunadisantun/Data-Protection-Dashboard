@@ -58,6 +58,24 @@ const onwardTransferOptions: TiaOnwardTransfer[] = [
   "Tidak diketahui",
 ];
 
+const riskParameterGuidance = {
+  recipientControls: {
+    question:
+      "Apakah pihak penerima memiliki kontrol teknis dan operasional terkait Pelindungan Data Pribadi?",
+    detail:
+      "Kontrol teknis dan operasional yang memadai untuk mencegah salah konfigurasi, kehilangan Data Pribadi, kerusakan data, serta untuk memastikan pemulihan data apabila terjadi gangguan?",
+  },
+  writtenAgreement: {
+    question:
+      "Apakah terdapat perjanjian atau pengaturan tertulis yang memadai untuk membatasi penggunaan Data Pribadi hanya sesuai tujuan transfer, serta mencegah pengungkapan tanpa otorisasi atau penyalahgunaan oleh pihak penerima?",
+  },
+  onwardTransfer: {
+    question: "Transfer Lanjutan",
+    detail:
+      "Apakah terdapat kemungkinan Data Pribadi ditransfer lebih lanjut ke negara lain oleh pihak penerima.",
+  },
+} as const;
+
 export function TiaWorkspace({
   draft,
   assessmentId,
@@ -379,26 +397,29 @@ export function TiaWorkspace({
           </span>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-3">
-          <FieldSelect
+          <RiskParameterSelect
             label="Kontrol Teknis dan Operasional Penerima"
             value={tiaDraft.transfer.recipientControls}
             options={controlRatings}
+            guidance={riskParameterGuidance.recipientControls}
             onChange={(value) =>
               updateTransfer("recipientControls", value as TiaControlRating)
             }
           />
-          <FieldSelect
+          <RiskParameterSelect
             label="Perjanjian atau Pengaturan Tertulis"
             value={tiaDraft.transfer.writtenAgreement}
             options={controlRatings}
+            guidance={riskParameterGuidance.writtenAgreement}
             onChange={(value) =>
               updateTransfer("writtenAgreement", value as TiaControlRating)
             }
           />
-          <FieldSelect
+          <RiskParameterSelect
             label="Transfer Lanjutan"
             value={tiaDraft.transfer.onwardTransfer}
             options={onwardTransferOptions}
+            guidance={riskParameterGuidance.onwardTransfer}
             onChange={(value) =>
               updateTransfer("onwardTransfer", value as TiaOnwardTransfer)
             }
@@ -609,6 +630,40 @@ function RiskBadge({ level }: { level: TiaRiskLevel }) {
     >
       {level}
     </Badge>
+  );
+}
+
+function RiskParameterSelect({
+  label,
+  value,
+  options,
+  guidance,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  guidance: {
+    question: string;
+    detail?: string;
+  };
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+      <FieldSelect
+        label={label}
+        value={value}
+        options={options}
+        onChange={onChange}
+      />
+      <div className="mt-3 space-y-1 text-xs leading-5">
+        <p className="font-semibold text-slate-700">{guidance.question}</p>
+        {guidance.detail ? (
+          <p className="italic text-blue-600">{guidance.detail}</p>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
