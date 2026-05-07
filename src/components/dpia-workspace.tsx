@@ -50,6 +50,57 @@ const riskLevels: DpiaRiskLevel[] = [
   "High",
 ];
 
+const dpiaTabs = [
+  {
+    id: "identity",
+    label: "Identity",
+    description: "Metadata dan penanggung jawab DPIA",
+  },
+  {
+    id: "processing",
+    label: "Processing",
+    description: "Analisa pemrosesan, identifikasi, dan para pihak",
+  },
+  {
+    id: "highRisk",
+    label: "High Risk",
+    description: "Kategori risiko tinggi Pasal 34",
+  },
+  {
+    id: "riskMatrix",
+    label: "Risk Matrix",
+    description: "Risk event, treatment, residual, dan target risk",
+  },
+  {
+    id: "decision",
+    label: "Decision",
+    description: "Kesimpulan dan monitoring",
+  },
+  {
+    id: "approval",
+    label: "Approval",
+    description: "Kontrol dokumen dan persetujuan",
+  },
+] as const;
+
+type DpiaTabId = (typeof dpiaTabs)[number]["id"];
+
+const monitoringStatusOptions = [
+  "Open",
+  "In Review",
+  "Treatment In Progress",
+  "Monitoring",
+  "Closed",
+];
+
+const mitigationApprovalOptions = [
+  "Menunggu Review Risk Owner",
+  "Disetujui Risk Owner",
+  "Disetujui DPO/Legal",
+  "Ditolak / Perlu Revisi",
+  "Tidak Berlaku",
+];
+
 export function DpiaWorkspace({
   draft,
   assessmentId,
@@ -59,6 +110,7 @@ export function DpiaWorkspace({
   const [dpiaDraft, setDpiaDraft] = useState(draft);
   const [status, setStatus] = useState(initialStatus);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [activeTab, setActiveTab] = useState<DpiaTabId>("identity");
   const [activeRiskId, setActiveRiskId] = useState(draft.risks[0]?.id ?? "");
   const activeRisk = useMemo(
     () =>
@@ -66,6 +118,7 @@ export function DpiaWorkspace({
       dpiaDraft.risks[0],
     [activeRiskId, dpiaDraft.risks],
   );
+  const activeTabIndex = dpiaTabs.findIndex((tab) => tab.id === activeTab);
 
   async function saveDraft(nextStatus: AssessmentStatus) {
     setSaveState("saving");
@@ -294,6 +347,52 @@ export function DpiaWorkspace({
     }));
   }
 
+  function addRelatedUnit(riskId: string) {
+    setDpiaDraft((current) => ({
+      ...current,
+      risks: current.risks.map((risk) =>
+        risk.id === riskId
+          ? {
+              ...risk,
+              relatedUnits: [...risk.relatedUnits, ""],
+            }
+          : risk,
+      ),
+    }));
+  }
+
+  function updateRelatedUnit(riskId: string, index: number, value: string) {
+    setDpiaDraft((current) => ({
+      ...current,
+      risks: current.risks.map((risk) =>
+        risk.id === riskId
+          ? {
+              ...risk,
+              relatedUnits: risk.relatedUnits.map((unit, unitIndex) =>
+                unitIndex === index ? value : unit,
+              ),
+            }
+          : risk,
+      ),
+    }));
+  }
+
+  function removeRelatedUnit(riskId: string, index: number) {
+    setDpiaDraft((current) => ({
+      ...current,
+      risks: current.risks.map((risk) =>
+        risk.id === riskId
+          ? {
+              ...risk,
+              relatedUnits: risk.relatedUnits.filter(
+                (_unit, unitIndex) => unitIndex !== index,
+              ),
+            }
+          : risk,
+      ),
+    }));
+  }
+
   function updateDraftField(field: keyof DpiaDraft, value: string) {
     setDpiaDraft((current) => ({
       ...current,
@@ -312,6 +411,14 @@ export function DpiaWorkspace({
         [field]: value,
       },
     }));
+  }
+
+  function goToRelativeTab(offset: number) {
+    const nextIndex = Math.max(
+      0,
+      Math.min(dpiaTabs.length - 1, activeTabIndex + offset),
+    );
+    setActiveTab(dpiaTabs[nextIndex].id);
   }
 
   return (
@@ -408,6 +515,9 @@ export function DpiaWorkspace({
         </div>
       ) : null}
 
+      <DpiaTabStepper activeTab={activeTab} onChange={setActiveTab} />
+
+      {activeTab === "identity" ? (
       <Card>
         <CardHeader>
           <CardTitle className="text-xl">Identitas DPIA</CardTitle>
@@ -440,7 +550,9 @@ export function DpiaWorkspace({
           />
         </CardContent>
       </Card>
+      ) : null}
 
+      {activeTab === "processing" ? (
       <div className="grid gap-5">
         {dpiaDraft.sections.map((section) => (
           <Card key={section.id}>
@@ -491,7 +603,9 @@ export function DpiaWorkspace({
           </Card>
         ))}
       </div>
+      ) : null}
 
+      {activeTab === "highRisk" ? (
       <Card>
         <CardHeader>
           <CardTitle className="text-xl">Potensi Risiko Tinggi</CardTitle>
@@ -535,7 +649,9 @@ export function DpiaWorkspace({
           />
         </CardContent>
       </Card>
+      ) : null}
 
+      {activeTab === "riskMatrix" ? (
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-4">
           <div>
@@ -705,9 +821,13 @@ export function DpiaWorkspace({
                 />
 
                 <div className="grid gap-4 lg:grid-cols-2">
-                  <FieldInput
+                  <FieldSelect
                     label="Monitoring Status"
                     value={activeRisk.monitoringStatus}
+                    options={selectOptionsWithCurrent(
+                      monitoringStatusOptions,
+                      activeRisk.monitoringStatus,
+                    )}
                     onChange={(value) =>
                       updateRisk(activeRisk.id, { monitoringStatus: value })
                     }
@@ -715,30 +835,29 @@ export function DpiaWorkspace({
                   <FieldInput
                     label="Target Waktu Pelaksanaan"
                     value={activeRisk.targetTimeline}
+                    type="date"
                     onChange={(value) =>
                       updateRisk(activeRisk.id, { targetTimeline: value })
                     }
                   />
-                  <FieldTextarea
+                  <FieldSelect
                     label="Persetujuan Langkah Pengurangan Risiko"
                     value={activeRisk.mitigationApproval}
+                    options={selectOptionsWithCurrent(
+                      mitigationApprovalOptions,
+                      activeRisk.mitigationApproval,
+                    )}
                     onChange={(value) =>
                       updateRisk(activeRisk.id, { mitigationApproval: value })
                     }
-                    minRows={3}
                   />
-                  <FieldTextarea
-                    label="Related Units for Coordination"
-                    value={activeRisk.relatedUnits.join(", ")}
-                    onChange={(value) =>
-                      updateRisk(activeRisk.id, {
-                        relatedUnits: value
-                          .split(",")
-                          .map((item) => item.trim())
-                          .filter(Boolean),
-                      })
+                  <RelatedUnitsRepeater
+                    units={activeRisk.relatedUnits}
+                    onAdd={() => addRelatedUnit(activeRisk.id)}
+                    onChange={(index, value) =>
+                      updateRelatedUnit(activeRisk.id, index, value)
                     }
-                    minRows={3}
+                    onRemove={(index) => removeRelatedUnit(activeRisk.id, index)}
                   />
                 </div>
               </>
@@ -761,7 +880,9 @@ export function DpiaWorkspace({
           </div>
         </CardContent>
       </Card>
+      ) : null}
 
+      {activeTab === "decision" ? (
       <Card>
         <CardHeader>
           <CardTitle className="text-xl">
@@ -789,7 +910,9 @@ export function DpiaWorkspace({
           />
         </CardContent>
       </Card>
+      ) : null}
 
+      {activeTab === "approval" ? (
       <Card>
         <CardHeader>
           <CardTitle className="text-xl">Kontrol Dokumen</CardTitle>
@@ -827,11 +950,28 @@ export function DpiaWorkspace({
           />
         </CardContent>
       </Card>
+      ) : null}
 
       <div className="flex flex-wrap justify-between gap-3">
         <Link href={resultHref} className={buttonVariants({ variant: "secondary" })}>
           Back to Results
         </Link>
+        <div className="flex flex-wrap gap-3">
+          <Button
+            variant="secondary"
+            onClick={() => goToRelativeTab(-1)}
+            disabled={activeTabIndex === 0}
+          >
+            Back
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => goToRelativeTab(1)}
+            disabled={activeTabIndex === dpiaTabs.length - 1}
+          >
+            Continue
+          </Button>
+        </div>
         <div className="flex flex-wrap gap-3">
           <Button
             variant="secondary"
@@ -859,6 +999,55 @@ export function DpiaWorkspace({
         </div>
       </div>
     </div>
+  );
+}
+
+function DpiaTabStepper({
+  activeTab,
+  onChange,
+}: {
+  activeTab: DpiaTabId;
+  onChange: (tab: DpiaTabId) => void;
+}) {
+  return (
+    <Card>
+      <CardContent className="pt-5">
+        <div className="flex gap-3 overflow-x-auto pb-1">
+          {dpiaTabs.map((tab, index) => {
+            const active = tab.id === activeTab;
+
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => onChange(tab.id)}
+                className={cn(
+                  "flex min-w-[148px] flex-1 items-start gap-3 rounded-lg border p-3 text-left transition",
+                  active
+                    ? "border-blue-200 bg-blue-50 text-blue-900 shadow-sm"
+                    : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50",
+                )}
+              >
+                <span
+                  className={cn(
+                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold",
+                    active ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500",
+                  )}
+                >
+                  {index + 1}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-bold">{tab.label}</span>
+                  <span className="mt-1 block text-xs leading-5 text-slate-500">
+                    {tab.description}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1112,6 +1301,66 @@ function TreatmentPlanFields({
   );
 }
 
+function RelatedUnitsRepeater({
+  units,
+  onAdd,
+  onChange,
+  onRemove,
+}: {
+  units: string[];
+  onAdd: () => void;
+  onChange: (index: number, value: string) => void;
+  onRemove: (index: number) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+            Related Units for Coordination
+          </div>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            Tambahkan unit yang perlu dilibatkan satu per satu.
+          </p>
+        </div>
+        <Button variant="secondary" size="sm" onClick={onAdd}>
+          <Plus className="h-4 w-4" />
+          Tambah
+        </Button>
+      </div>
+
+      <div className="mt-3 space-y-2">
+        {units.length ? (
+          units.map((unit, index) => (
+            <div key={`${index}-${unit}`} className="flex gap-2">
+              <input
+                value={unit}
+                onChange={(event) => onChange(index, event.target.value)}
+                className="h-10 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                placeholder="e.g., Legal, IT Security, Risk Management"
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                onClick={() => onRemove(index)}
+                aria-label="Hapus unit"
+                title="Hapus unit"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          ))
+        ) : (
+          <div className="rounded border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
+            Belum ada related unit.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function RiskMatrix({
   profile,
   onChange,
@@ -1206,10 +1455,12 @@ function RiskBadge({ level }: { level: DpiaRiskLevel }) {
 function FieldInput({
   label,
   value,
+  type = "text",
   onChange,
 }: {
   label: string;
   value: string;
+  type?: "date" | "text";
   onChange: (value: string) => void;
 }) {
   return (
@@ -1218,6 +1469,7 @@ function FieldInput({
         {label}
       </span>
       <input
+        type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="mt-2 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
@@ -1348,4 +1600,12 @@ function profileForRiskLevel(level: DpiaRiskLevel): DpiaRiskProfile {
     case "High":
       return calculateRiskProfile(5, 5);
   }
+}
+
+function selectOptionsWithCurrent(options: string[], current: string) {
+  if (!current || options.includes(current)) {
+    return options;
+  }
+
+  return [current, ...options];
 }
