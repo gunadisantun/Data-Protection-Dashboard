@@ -7,6 +7,7 @@ import {
   Download,
   FileCheck2,
   Globe2,
+  PencilLine,
   Save,
   ShieldCheck,
 } from "lucide-react";
@@ -85,6 +86,8 @@ export function TiaWorkspace({
   const [tiaDraft, setTiaDraft] = useState(() => recalculateTiaDraft(draft));
   const [status, setStatus] = useState(initialStatus);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [canEditRisks, setCanEditRisks] = useState(false);
+  const [canEditEvaluation, setCanEditEvaluation] = useState(false);
 
   async function saveDraft(nextStatus: AssessmentStatus) {
     setSaveState("saving");
@@ -428,8 +431,24 @@ export function TiaWorkspace({
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-xl">Potensi Risiko</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
+          <div>
+            <CardTitle className="text-xl">Potensi Risiko</CardTitle>
+            {!canEditRisks ? (
+              <p className="mt-1 text-sm text-slate-500">
+                Mitigasi dan catatan dikunci. Klik edit untuk mengubah.
+              </p>
+            ) : null}
+          </div>
+          <Button
+            variant={canEditRisks ? "secondary" : "default"}
+            size="sm"
+            onClick={() => setCanEditRisks(true)}
+            disabled={canEditRisks}
+          >
+            <PencilLine className="h-4 w-4" />
+            {canEditRisks ? "Mode Edit Aktif" : "Edit Potensi Risiko"}
+          </Button>
         </CardHeader>
         <CardContent className="space-y-4">
           {tiaDraft.risks.map((risk) => (
@@ -454,6 +473,7 @@ export function TiaWorkspace({
                 value={risk.mitigation}
                 onChange={(value) => updateRiskMitigation(risk.id, value)}
                 minRows={4}
+                disabled={!canEditRisks}
               />
             </div>
           ))}
@@ -461,8 +481,26 @@ export function TiaWorkspace({
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-xl">Evaluasi Transfer Data Pribadi</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
+          <div>
+            <CardTitle className="text-xl">
+              Evaluasi Transfer Data Pribadi
+            </CardTitle>
+            {!canEditEvaluation ? (
+              <p className="mt-1 text-sm text-slate-500">
+                Langkah prosedural dikunci. Klik edit untuk mengubah.
+              </p>
+            ) : null}
+          </div>
+          <Button
+            variant={canEditEvaluation ? "secondary" : "default"}
+            size="sm"
+            onClick={() => setCanEditEvaluation(true)}
+            disabled={canEditEvaluation}
+          >
+            <PencilLine className="h-4 w-4" />
+            {canEditEvaluation ? "Mode Edit Aktif" : "Edit Evaluasi"}
+          </Button>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="grid gap-4 md:grid-cols-4">
@@ -503,6 +541,7 @@ export function TiaWorkspace({
             value={tiaDraft.evaluation.proceduralSteps}
             onChange={updateProceduralSteps}
             minRows={4}
+            disabled={!canEditEvaluation}
           />
         </CardContent>
       </Card>
@@ -729,11 +768,13 @@ function FieldTextarea({
   value,
   onChange,
   minRows = 5,
+  disabled = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   minRows?: number;
+  disabled?: boolean;
 }) {
   return (
     <label className="block">
@@ -744,7 +785,13 @@ function FieldTextarea({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         rows={minRows}
-        className="mt-2 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-950 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+        disabled={disabled}
+        className={cn(
+          "mt-2 w-full resize-y rounded-md border border-slate-200 px-3 py-2 text-sm leading-6 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100",
+          disabled
+            ? "cursor-not-allowed bg-slate-100 text-slate-500"
+            : "bg-white text-slate-950",
+        )}
       />
     </label>
   );
