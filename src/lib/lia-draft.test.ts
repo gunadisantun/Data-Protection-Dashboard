@@ -82,8 +82,12 @@ function makeAssessment(): Parameters<typeof buildLiaDraft>[0] {
       departmentId: "dept-marketing",
       picName: "Santi",
       picEmail: "santi@example.com",
+      controllerProcessorContacts:
+        "Marketing Controller - dpo@marketing.local; CRM vendor - privacy@vendor.local",
+      dpoContact: "dpo@marketing.local",
       legalBasis: "Legitimate Interest",
       processingPurpose: "Run a marketing campaign with existing customers.",
+      transferPurpose: "Campaign execution and vendor delivery",
       sourceMechanism: "CRM export",
       subjectCategories: ["Customers"],
       personalDataTypes: ["Contact Details", "Purchase History"],
@@ -110,6 +114,8 @@ function makeAssessment(): Parameters<typeof buildLiaDraft>[0] {
       riskMitigationPlan: "Review balancing test and opt-out wording.",
       volumeLevel: "Medium",
       usesAutomatedDecisionMaking: false,
+      dataFlowMapping:
+        "CRM export -> campaign segmentation -> vendor delivery -> campaign reporting",
       previousProcess: "Customer registration",
       nextProcess: "Campaign reporting",
       status: "Active",

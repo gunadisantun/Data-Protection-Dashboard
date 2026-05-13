@@ -109,8 +109,12 @@ function makeAssessment(): Parameters<typeof buildTiaDraft>[0] {
       departmentId: "dept-finance",
       picName: "Nadia",
       picEmail: "nadia@example.com",
+      controllerProcessorContacts:
+        "Finance Controller - dpo@finance.local; Payment gateway - privacy@gateway.local",
+      dpoContact: "dpo@finance.local",
       legalBasis: "Contractual",
       processingPurpose: "Contract performance and invoicing.",
+      transferPurpose: "Payment processing and billing reconciliation",
       sourceMechanism: "Billing portal",
       subjectCategories: ["Subscribers"],
       personalDataTypes: ["Contact Details", "Financial"],
@@ -137,6 +141,8 @@ function makeAssessment(): Parameters<typeof buildTiaDraft>[0] {
       riskMitigationPlan: "Complete TIA and validate SCC coverage.",
       volumeLevel: "Medium",
       usesAutomatedDecisionMaking: false,
+      dataFlowMapping:
+        "Billing portal -> subscription ledger -> payment gateway -> revenue reporting",
       previousProcess: "Subscription signup",
       nextProcess: "Revenue reporting",
       status: "Active",

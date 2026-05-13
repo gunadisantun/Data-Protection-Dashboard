@@ -51,8 +51,11 @@ export type CreateRopaPayload = {
   departmentId: string;
   picName: string;
   picEmail: string;
+  controllerProcessorContacts: string;
+  dpoContact: string;
   legalBasis: LegalBasis;
   processingPurpose: string;
+  transferPurpose: string;
   sourceMechanism: string;
   subjectCategories: string[];
   personalDataTypes: string[];
@@ -79,6 +82,7 @@ export type CreateRopaPayload = {
   riskMitigationPlan?: string;
   volumeLevel: "Small" | "Medium" | "Large";
   usesAutomatedDecisionMaking: boolean;
+  dataFlowMapping: string;
   previousProcess: string;
   nextProcess: string;
   status?: RopaStatus;

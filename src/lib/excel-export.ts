@@ -135,6 +135,7 @@ export async function buildDpiaWorkbook(
   setCell(riskSheet, "K26", draft.signatures.reviewedBy);
   setCell(riskSheet, "L26", draft.signatures.approvedBy);
   setCell(riskSheet, "M26", draft.signatures.acknowledgedBy);
+  writeDpiaRiskRegisterSheet(workbook, draft);
 
   void assessment;
   return writeWorkbook(workbook);
@@ -274,6 +275,10 @@ function getWorksheet(workbook: Workbook, name: string) {
   return sheet;
 }
 
+function getOrCreateWorksheet(workbook: Workbook, name: string) {
+  return workbook.getWorksheet(name) ?? workbook.addWorksheet(name);
+}
+
 function setCells(sheet: Worksheet, values: Record<string, string | number>) {
   Object.entries(values).forEach(([address, value]) => setCell(sheet, address, value));
 }
@@ -384,17 +389,17 @@ function fillRopaRow(
     activity.department.name,
     `${activity.picName} (${activity.picEmail})`,
     "Pengendali",
-    "",
+    activity.dpoContact,
     activity.activityName,
     activity.processDescription,
     activity.processingPurpose,
     activity.legalBasis,
     activity.sourceMechanism,
-    activity.sourceMechanism,
+    activity.transferPurpose,
     joinList(activity.subjectCategories),
     joinList(activity.personalDataTypes),
     activity.recipients,
-    activity.processorContractLink,
+    activity.controllerProcessorContacts || activity.processorContractLink,
     activity.dataReceiverRole,
     activity.isCrossBorder ? activity.destinationCountry : "",
     activity.isCrossBorder ? activity.exportProtectionMechanism : "",
@@ -448,4 +453,59 @@ function riskSummary(activity: RopaWithDepartment) {
     : "";
 
   return `${categories}${context}${register}`;
+}
+
+function writeDpiaRiskRegisterSheet(workbook: Workbook, draft: DpiaDraft) {
+  const sheet = getOrCreateWorksheet(workbook, "Risk Register");
+  sheet.spliceRows(1, Math.max(sheet.rowCount, 1));
+
+  const header = [
+    "Risk ID",
+    "Risk Description",
+    "Potential Impact",
+    "Existing Control",
+    "Risk Level",
+    "Recommended Action",
+    "Risk Owner",
+    "Target Date",
+    "Status",
+    "Remarks",
+  ];
+
+  const headerRow = sheet.addRow(header);
+  headerRow.eachCell((cell) => {
+    cell.font = { bold: true };
+    cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+  });
+
+  draft.riskRegister.forEach((item) => {
+    const row = sheet.addRow([
+      item.riskId,
+      item.riskDescription,
+      item.potentialImpact,
+      item.existingControl,
+      item.riskLevel,
+      item.recommendedAction,
+      item.riskOwner,
+      item.targetDate,
+      item.status,
+      item.remarks,
+    ]);
+    row.eachCell((cell) => {
+      cell.alignment = { vertical: "top", wrapText: true };
+    });
+  });
+
+  sheet.columns = [
+    { width: 12 },
+    { width: 30 },
+    { width: 24 },
+    { width: 24 },
+    { width: 12 },
+    { width: 26 },
+    { width: 20 },
+    { width: 14 },
+    { width: 14 },
+    { width: 24 },
+  ];
 }

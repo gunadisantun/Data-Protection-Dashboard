@@ -99,9 +99,34 @@ function parseRopaRow(
   const activityName = getText(sheet, rowNumber, 7);
   const processDescription = getText(sheet, rowNumber, 8);
   const processingPurpose = getText(sheet, rowNumber, 9);
+  const transferPurpose = getText(sheet, rowNumber, 9) || processingPurpose;
   const legalBasis = normalizeLegalBasis(getText(sheet, rowNumber, 10));
   const subjectCategories = splitList(getText(sheet, rowNumber, 13));
   const personalDataTypes = splitList(getText(sheet, rowNumber, 14));
+  const recipients = getText(sheet, rowNumber, 15);
+  const dataReceiverRole = getText(sheet, rowNumber, 17);
+  const processorContractLink = getText(sheet, rowNumber, 16);
+  const storageLocation = getText(sheet, rowNumber, 21);
+  const retentionPeriod = getText(sheet, rowNumber, 22);
+  const technicalMeasures = getText(sheet, rowNumber, 23);
+  const organizationalMeasures = getText(sheet, rowNumber, 24);
+  const dataSubjectRights = getText(sheet, rowNumber, 25);
+  const previousProcess = getText(sheet, rowNumber, 27);
+  const nextProcess = getText(sheet, rowNumber, 28);
+  const flowDraft = [previousProcess, activityName, nextProcess]
+    .filter(Boolean)
+    .join(" -> ");
+  const dataFlowMapping =
+    flowDraft.length >= 10
+      ? flowDraft
+      : `Sumber -> ${activityName || "Aktivitas"} -> Retensi`;
+  const controllerProcessorContacts = [
+    recipients,
+    dataReceiverRole ? `Peran: ${dataReceiverRole}` : "",
+    processorContractLink ? `Kontak/Referensi: ${processorContractLink}` : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
   const destinationCountry = getText(sheet, rowNumber, 18);
   const riskText = getText(sheet, rowNumber, 26);
   const highRiskCategories = detectHighRiskCategories(riskText, personalDataTypes);
@@ -134,6 +159,10 @@ function parseRopaRow(
     messages.push("Jenis Data Pribadi wajib diisi minimal 1 item.");
   }
 
+  if (!recipients.trim()) {
+    messages.push("Pihak selain Pengendali yang dapat mengakses Data Pribadi wajib diisi.");
+  }
+
   if (!extractEmail(picRaw)) {
     warnings.push(
       `PIC row ${rowNumber} tidak memuat email, memakai imported.pic@privacyvault.local.`,
@@ -152,25 +181,30 @@ function parseRopaRow(
     departmentId: department?.id ?? "",
     picName,
     picEmail,
+    controllerProcessorContacts:
+      controllerProcessorContacts || `${picName} (${picEmail})`,
+    dpoContact: picEmail,
     legalBasis,
     processingPurpose,
+    transferPurpose,
     sourceMechanism:
       getText(sheet, rowNumber, 12) || getText(sheet, rowNumber, 11) || "Direct collection",
     subjectCategories,
     personalDataTypes,
-    recipients: getText(sheet, rowNumber, 15),
-    processorContractLink: getText(sheet, rowNumber, 16),
-    dataReceiverRole: getText(sheet, rowNumber, 17),
+    recipients,
+    processorContractLink,
+    dataReceiverRole,
     isCrossBorder,
     destinationCountry,
     exportProtectionMechanism:
       exportProtectionMechanism || (isCrossBorder ? "Perlu dilengkapi" : ""),
-    transferMechanism: getText(sheet, rowNumber, 20),
-    storageLocation: getText(sheet, rowNumber, 21),
-    retentionPeriod: getText(sheet, rowNumber, 22),
-    technicalMeasures: getText(sheet, rowNumber, 23),
-    organizationalMeasures: getText(sheet, rowNumber, 24),
-    dataSubjectRights: getText(sheet, rowNumber, 25),
+    transferMechanism: getText(sheet, rowNumber, 20) || "Secure transfer channel",
+    storageLocation: storageLocation || "Lokasi penyimpanan perlu dikonfirmasi",
+    retentionPeriod: retentionPeriod || "Periode retensi perlu dikonfirmasi",
+    technicalMeasures: technicalMeasures || "Kontrol teknis perlu dilengkapi",
+    organizationalMeasures:
+      organizationalMeasures || "Kontrol organisasi perlu dilengkapi",
+    dataSubjectRights: dataSubjectRights || "Perlu konfirmasi hak subjek data",
     riskAssessmentLevel,
     highRiskCategories,
     riskRegisterReference: extractRiskRegisterReference(riskText),
@@ -182,8 +216,9 @@ function parseRopaRow(
     riskMitigationPlan: "",
     volumeLevel,
     usesAutomatedDecisionMaking,
-    previousProcess: getText(sheet, rowNumber, 27),
-    nextProcess: getText(sheet, rowNumber, 28),
+    dataFlowMapping,
+    previousProcess,
+    nextProcess,
     status: "Active",
     userId: "user-admin",
   };

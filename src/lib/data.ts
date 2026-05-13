@@ -16,6 +16,17 @@ import type {
   RopaListFilters,
 } from "@/lib/types";
 
+const specificPersonalDataKeywords = [
+  "kesehatan",
+  "biometrik",
+  "genetika",
+  "kejahatan",
+  "anak",
+  "keuangan",
+  "spesifik",
+  "sensitif",
+];
+
 export async function getCurrentUser() {
   await ensureDatabase();
   return db.query.users.findFirst({
@@ -49,8 +60,11 @@ export async function listRopa(filters: RopaListFilters = {}) {
       activityName: ropaActivities.activityName,
       departmentId: ropaActivities.departmentId,
       departmentName: departments.name,
+      legalBasis: ropaActivities.legalBasis,
       subjectCategories: ropaActivities.subjectCategories,
       personalDataTypes: ropaActivities.personalDataTypes,
+      recipients: ropaActivities.recipients,
+      dataReceiverRole: ropaActivities.dataReceiverRole,
       riskAssessmentLevel: ropaActivities.riskAssessmentLevel,
       status: ropaActivities.status,
       isCrossBorder: ropaActivities.isCrossBorder,
@@ -171,30 +185,28 @@ export async function getDashboardSummary() {
   await ensureDatabase();
   const allRopa = await listRopa();
   const allTasks = await listTasks();
+  const ropaAnalysis = buildRopaAnalysis(allRopa);
   const openTasks = allTasks.filter((task) => task.status !== "Done");
   const criticalTasks = allTasks.filter((task) => task.severity === "Critical");
   const activeRopa = allRopa.filter((activity) => activity.status === "Active");
   const drafts = allRopa.filter((activity) => activity.status === "Draft");
-  const complianceScore =
-    allTasks.length === 0
-      ? 100
-      : Math.round(
-          ((allTasks.length - openTasks.length * 0.42 - criticalTasks.length * 0.18) /
-            allTasks.length) *
-            100,
-        );
+  const assessmentByType = {
+    DPIA: allTasks.filter((task) => task.taskType === "DPIA").length,
+    TIA: allTasks.filter((task) => task.taskType === "TIA").length,
+    LIA: allTasks.filter((task) => task.taskType === "LIA").length,
+  };
 
   return {
-    complianceScore: Math.max(0, Math.min(100, complianceScore)),
     totalRopa: allRopa.length,
     activeRopa: activeRopa.length,
     drafts: drafts.length,
     activeAssessments: openTasks.length,
+    assessmentByType,
     pendingTasks: openTasks.length,
     criticalRisks: criticalTasks.length,
-    controlsActive: 0,
     recentActivity: await getAuditEvents(4),
     urgentTasks: openTasks.slice(0, 6),
+    ropaAnalysis,
     riskDistribution: {
       Low: allRopa.filter((activity) => activity.riskAssessmentLevel === "Low").length,
       Medium: allRopa.filter((activity) => activity.riskAssessmentLevel === "Medium")
@@ -227,8 +239,11 @@ export async function createRopa(payload: CreateRopaPayload) {
       departmentId: payload.departmentId,
       picName: payload.picName,
       picEmail: payload.picEmail,
+      controllerProcessorContacts: payload.controllerProcessorContacts,
+      dpoContact: payload.dpoContact,
       legalBasis: payload.legalBasis,
       processingPurpose: payload.processingPurpose,
+      transferPurpose: payload.transferPurpose,
       sourceMechanism: payload.sourceMechanism,
       subjectCategories: payload.subjectCategories,
       personalDataTypes: payload.personalDataTypes,
@@ -255,6 +270,7 @@ export async function createRopa(payload: CreateRopaPayload) {
       riskMitigationPlan: payload.riskMitigationPlan ?? "",
       volumeLevel: payload.volumeLevel,
       usesAutomatedDecisionMaking: payload.usesAutomatedDecisionMaking,
+      dataFlowMapping: payload.dataFlowMapping,
       previousProcess: payload.previousProcess,
       nextProcess: payload.nextProcess,
       status: payload.status ?? "Active",
@@ -384,6 +400,12 @@ export async function getReportSummary() {
 
   return {
     ...summary,
+    complianceScore:
+      tasks.length === 0
+        ? 100
+        : Math.round(
+            (tasks.filter((task) => task.status === "Done").length / tasks.length) * 100,
+          ),
     assessmentMix: {
       DPIA: byType("DPIA").length,
       TIA: byType("TIA").length,
@@ -416,4 +438,145 @@ export async function getRegistryStats() {
 
 function assessmentOrder(type: AssessmentType) {
   return type === "DPIA" ? 0 : type === "TIA" ? 1 : 2;
+}
+
+type RopaActivityForAnalysis = Awaited<ReturnType<typeof listRopa>>[number];
+
+function buildRopaAnalysis(activities: RopaActivityForAnalysis[]) {
+  const dataTypeMap = new Map<string, { count: number; units: Set<string> }>();
+  let specificDataActivityCount = 0;
+
+  activities.forEach((activity) => {
+    const uniqueTypes = uniqueNonEmpty(activity.personalDataTypes);
+    const hasSpecificData = uniqueTypes.some((type) => isSpecificPersonalDataType(type));
+
+    if (hasSpecificData) {
+      specificDataActivityCount += 1;
+    }
+
+    uniqueTypes.forEach((dataType) => {
+      const current = dataTypeMap.get(dataType) ?? {
+        count: 0,
+        units: new Set<string>(),
+      };
+      current.count += 1;
+      current.units.add(activity.departmentName);
+      dataTypeMap.set(dataType, current);
+    });
+  });
+
+  const dataTypeRows = [...dataTypeMap.entries()]
+    .map(([dataType, aggregate]) => ({
+      dataType,
+      activityCount: aggregate.count,
+      units: [...aggregate.units].sort().join(", "),
+    }))
+    .sort((a, b) => b.activityCount - a.activityCount || a.dataType.localeCompare(b.dataType));
+
+  const legalBasisDistribution = aggregateLegalBasisDistribution(activities);
+  const activitiesWithoutLegalBasis = activities
+    .filter((activity) => !activity.legalBasis.trim())
+    .map((activity) => ({
+      id: activity.id,
+      activityName: activity.activityName,
+      departmentName: activity.departmentName,
+      picName: activity.picName,
+    }));
+
+  const thirdPartyTableRows = activities
+    .flatMap((activity) => {
+      const thirdParties = splitThirdParties(activity.recipients);
+      const role = activity.dataReceiverRole.trim();
+
+      return thirdParties.map((thirdParty) => ({
+        id: activity.id,
+        activityName: activity.activityName,
+        departmentName: activity.departmentName,
+        thirdParty,
+        role: role || "-",
+      }));
+    })
+    .sort((a, b) => a.activityName.localeCompare(b.activityName));
+
+  const topThirdParties = [...countBy(thirdPartyTableRows, (row) => row.thirdParty)]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    .slice(0, 10);
+
+  const activitiesWithThirdParty = activities.filter(
+    (activity) => splitThirdParties(activity.recipients).length > 0,
+  ).length;
+
+  return {
+    dataTypeAnalysis: {
+      totalActivities: activities.length,
+      specificDataActivityCount,
+      topDataTypes: dataTypeRows.slice(0, 10),
+      tableRows: dataTypeRows,
+    },
+    legalBasisAnalysis: {
+      distribution: legalBasisDistribution,
+      missingCount: activitiesWithoutLegalBasis.length,
+      missingActivities: activitiesWithoutLegalBasis,
+    },
+    thirdPartyAnalysis: {
+      activitiesWithThirdParty,
+      topThirdParties,
+      tableRows: thirdPartyTableRows,
+    },
+  };
+}
+
+function aggregateLegalBasisDistribution(activities: RopaActivityForAnalysis[]) {
+  const labels = [
+    "Consent",
+    "Contractual",
+    "Legal Obligation",
+    "Legitimate Interest",
+    "Vital Interest",
+    "Public Interest",
+  ];
+  const counts = new Map<string, number>(labels.map((label) => [label, 0]));
+
+  activities.forEach((activity) => {
+    const legalBasis = activity.legalBasis.trim();
+
+    if (!legalBasis) {
+      return;
+    }
+
+    counts.set(legalBasis, (counts.get(legalBasis) ?? 0) + 1);
+  });
+
+  return [...counts.entries()].map(([legalBasis, count]) => ({
+    legalBasis,
+    count,
+  }));
+}
+
+function uniqueNonEmpty(values: string[]) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function isSpecificPersonalDataType(value: string) {
+  const normalized = value.toLowerCase();
+  return specificPersonalDataKeywords.some((keyword) => normalized.includes(keyword));
+}
+
+function splitThirdParties(value: string) {
+  return value
+    .split(/[\n,;|]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function countBy<T>(items: T[], selector: (item: T) => string) {
+  const counts = new Map<string, number>();
+
+  items.forEach((item) => {
+    const key = selector(item);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  });
+
+  return counts;
 }

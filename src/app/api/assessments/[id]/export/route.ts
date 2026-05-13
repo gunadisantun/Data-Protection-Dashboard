@@ -28,6 +28,8 @@ type RouteContext = {
 
 export async function GET(_request: Request, context: RouteContext) {
   const { id } = await context.params;
+  const { searchParams } = new URL(_request.url);
+  const scope = searchParams.get("scope");
   const assessment = await getAssessmentById(id);
 
   if (!assessment) {
@@ -38,7 +40,8 @@ export async function GET(_request: Request, context: RouteContext) {
     if (assessment.taskType === "DPIA") {
       const draft = mergeSavedDpiaDraft(buildDpiaDraft(assessment), assessment.notes);
       const buffer = await buildDpiaWorkbook(assessment, draft);
-      return excelResponse(buffer, excelFileName("DPIA", draft.activityName));
+      const prefix = scope === "risk-register" ? "DPIA Risk Register" : "DPIA";
+      return excelResponse(buffer, excelFileName(prefix, draft.activityName));
     }
 
     if (assessment.taskType === "TIA") {

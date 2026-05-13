@@ -19,6 +19,9 @@ export type DpiaRiskLevel =
   | "Moderate to High"
   | "High";
 
+export type DpiaRiskRegisterLevel = "Low" | "Medium" | "High";
+export type DpiaRiskRegisterStatus = "Open" | "In Progress" | "Closed";
+
 export type DpiaRiskProfile = {
   impact: number;
   likelihood: number;
@@ -84,6 +87,20 @@ export type DpiaRisk = {
   relatedUnits: string[];
 };
 
+export type DpiaRiskRegisterItem = {
+  id: string;
+  riskId: string;
+  riskDescription: string;
+  potentialImpact: string;
+  existingControl: string;
+  riskLevel: DpiaRiskRegisterLevel;
+  recommendedAction: string;
+  riskOwner: string;
+  targetDate: string;
+  status: DpiaRiskRegisterStatus;
+  remarks: string;
+};
+
 export type DpiaDraft = {
   assessmentId: string;
   activityId: string;
@@ -105,6 +122,7 @@ export type DpiaDraft = {
   probabilityCriteria: string[];
   impactCriteria: string[];
   risks: DpiaRisk[];
+  riskRegister: DpiaRiskRegisterItem[];
   conclusion: string;
   monitoringPlan: string;
   publicSummary: string;
@@ -166,7 +184,7 @@ export function buildDpiaDraft(assessment: DpiaAssessment): DpiaDraft {
     generatedAt: new Date().toISOString(),
     metadata: {
       processOwnerPosition: `${department.name} Process Owner`,
-      dpo: "Pejabat Pelindung Data Pribadi",
+      dpo: activity.dpoContact || "Pejabat Pelindung Data Pribadi",
       date: formatIndonesianDate(new Date()),
       responsiblePerson: `${activity.picName} (${activity.picEmail})`,
       relatedUnits: relatedUnits || department.name,
@@ -181,14 +199,14 @@ export function buildDpiaDraft(assessment: DpiaAssessment): DpiaDraft {
             "1",
             "Deskripsi Aktivitas Pemrosesan Data Pribadi",
             "Jelaskan bagaimana data diperoleh, diolah, disimpan, ditransfer, dan dihapus.",
-            `${activity.processDescription}. Data diperoleh melalui ${activity.sourceMechanism}; disimpan di ${activity.storageLocation || "lokasi yang perlu dikonfirmasi"}; retensi ${activity.retentionPeriod || "perlu dilengkapi"}. ${transferDescription}`,
+            `${activity.processDescription}. Data diperoleh melalui ${activity.sourceMechanism}; disimpan di ${activity.storageLocation || "lokasi yang perlu dikonfirmasi"}; retensi ${activity.retentionPeriod || "perlu dilengkapi"}. ${transferDescription} Pemetaan aliran data: ${activity.dataFlowMapping || "perlu dilengkapi"}.`,
           ),
           row(
             "processing-2",
             "2",
             "Tujuan Pemrosesan Data Pribadi",
             "Tuliskan tujuan pemrosesan yang spesifik dan dapat diuji.",
-            activity.processingPurpose,
+            `${activity.processingPurpose}. Tujuan pengiriman data: ${activity.transferPurpose || "perlu dilengkapi"}.`,
           ),
           row(
             "processing-3",
@@ -339,7 +357,7 @@ export function buildDpiaDraft(assessment: DpiaAssessment): DpiaDraft {
             "Profil Pihak Eksternal yang terlibat",
             "Sebutkan peran pihak eksternal, kontrak, dan tanggung jawabnya.",
             activity.recipients
-              ? `${activity.recipients} terlibat sebagai ${activity.dataReceiverRole || "pihak eksternal yang perlu diklasifikasi"}. Kontrak/perjanjian: ${activity.processorContractLink || "perlu dilengkapi"}.`
+              ? `${activity.recipients} terlibat sebagai ${activity.dataReceiverRole || "pihak eksternal yang perlu diklasifikasi"}. Kontak/kontrak: ${activity.controllerProcessorContacts || activity.processorContractLink || "perlu dilengkapi"}.`
               : "Tidak ada pihak eksternal yang tercatat. PIC perlu mengonfirmasi apakah ada vendor, prosesor, atau pengendali bersama.",
           ),
           row(
@@ -368,6 +386,7 @@ export function buildDpiaDraft(assessment: DpiaAssessment): DpiaDraft {
     probabilityCriteria,
     impactCriteria,
     risks: [],
+    riskRegister: [],
     conclusion:
       "Pemrosesan dapat dilanjutkan setelah risiko prioritas tinggi dimitigasi, kontrol keamanan dan transparansi diperkuat, dan DPO/Legal menyetujui residual risk.",
     monitoringPlan:
@@ -473,11 +492,32 @@ export function createEmptyTreatmentPlan(): DpiaTreatmentPlan {
   };
 }
 
+export function createEmptyRiskRegisterItem(number: number): DpiaRiskRegisterItem {
+  return {
+    id: createDraftId("register"),
+    riskId: `RR-${String(number).padStart(3, "0")}`,
+    riskDescription: "",
+    potentialImpact: "",
+    existingControl: "",
+    riskLevel: "Medium",
+    recommendedAction: "",
+    riskOwner: "",
+    targetDate: "",
+    status: "Open",
+    remarks: "",
+  };
+}
+
 function normalizeDpiaDraft(draft: DpiaDraft): DpiaDraft {
   return {
     ...draft,
     risks: Array.isArray(draft.risks)
       ? draft.risks.map((risk, index) => normalizeDpiaRisk(risk, index + 1))
+      : [],
+    riskRegister: Array.isArray(draft.riskRegister)
+      ? draft.riskRegister.map((item, index) =>
+          normalizeRiskRegisterItem(item, index + 1),
+        )
       : [],
   };
 }
@@ -570,6 +610,42 @@ function normalizeTreatmentPlan(plan: DpiaTreatmentPlan): DpiaTreatmentPlan {
     status: plan.status || "Planned",
     expectedEffect: plan.expectedEffect || "",
   };
+}
+
+function normalizeRiskRegisterItem(
+  item: DpiaRiskRegisterItem,
+  fallbackNumber: number,
+): DpiaRiskRegisterItem {
+  return {
+    id: stringValue(item.id) || createDraftId("register"),
+    riskId:
+      stringValue(item.riskId) || `RR-${String(fallbackNumber).padStart(3, "0")}`,
+    riskDescription: stringValue(item.riskDescription),
+    potentialImpact: stringValue(item.potentialImpact),
+    existingControl: stringValue(item.existingControl),
+    riskLevel: normalizeRiskRegisterLevel(item.riskLevel),
+    recommendedAction: stringValue(item.recommendedAction),
+    riskOwner: stringValue(item.riskOwner),
+    targetDate: stringValue(item.targetDate),
+    status: normalizeRiskRegisterStatus(item.status),
+    remarks: stringValue(item.remarks),
+  };
+}
+
+function normalizeRiskRegisterLevel(value: unknown): DpiaRiskRegisterLevel {
+  if (value === "Low" || value === "Medium" || value === "High") {
+    return value;
+  }
+
+  return "Medium";
+}
+
+function normalizeRiskRegisterStatus(value: unknown): DpiaRiskRegisterStatus {
+  if (value === "Open" || value === "In Progress" || value === "Closed") {
+    return value;
+  }
+
+  return "Open";
 }
 
 function normalizeRiskProfile(

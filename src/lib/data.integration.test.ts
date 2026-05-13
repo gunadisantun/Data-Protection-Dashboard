@@ -31,8 +31,12 @@ describeWithDatabase("createRopa", () => {
       departmentId: "dept-marketing",
       picName: "Bima Santoso",
       picEmail: "bima@privacyvault.local",
+      controllerProcessorContacts:
+        "PT Example (Pengendali) - dpo@example.com; Analytics platform - privacy@analytics.local",
+      dpoContact: "dpo@privacyvault.local",
       legalBasis: "Legitimate Interest",
       processingPurpose: "Marketing and sales analytics",
+      transferPurpose: "Campaign analytics and reporting to external processor",
       sourceMechanism: "CRM and campaign form",
       subjectCategories: ["Customers"],
       personalDataTypes: ["Contact Details", "Purchase History", "Geolocation"],
@@ -53,6 +57,8 @@ describeWithDatabase("createRopa", () => {
       riskRegisterReference: "RR-PRIV-2026-014",
       volumeLevel: "Large",
       usesAutomatedDecisionMaking: true,
+      dataFlowMapping:
+        "CRM form -> marketing database -> analytics platform -> campaign reporting",
       previousProcess: "Customer purchase",
       nextProcess: "Campaign reporting",
       status: "Active",

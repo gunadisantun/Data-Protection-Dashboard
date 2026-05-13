@@ -32,8 +32,11 @@ type WizardData = {
   departmentId: string;
   picName: string;
   picEmail: string;
+  controllerProcessorContacts: string;
+  dpoContact: string;
   legalBasis: string;
   processingPurpose: string;
+  transferPurpose: string;
   sourceMechanism: string;
   subjectCategories: string[];
   personalDataTypes: string[];
@@ -60,6 +63,7 @@ type WizardData = {
   riskMitigationPlan: string;
   volumeLevel: string;
   usesAutomatedDecisionMaking: boolean;
+  dataFlowMapping: string;
   previousProcess: string;
   nextProcess: string;
 };
@@ -123,8 +127,11 @@ const initialData: WizardData = {
   departmentId: "",
   picName: "",
   picEmail: "",
+  controllerProcessorContacts: "",
+  dpoContact: "",
   legalBasis: "Consent",
   processingPurpose: "",
+  transferPurpose: "",
   sourceMechanism: "Direct collection",
   subjectCategories: ["Pelanggan"],
   personalDataTypes: ["Nama lengkap"],
@@ -154,6 +161,7 @@ const initialData: WizardData = {
   riskMitigationPlan: "",
   volumeLevel: "Small",
   usesAutomatedDecisionMaking: false,
+  dataFlowMapping: "",
   previousProcess: "",
   nextProcess: "",
 };
@@ -172,15 +180,29 @@ export function RopaWizard({ departments }: { departments: Department[] }) {
         label: "Select the correct business unit to assign accountability.",
       },
       {
-        done: Boolean(data.picName && data.picEmail),
-        label: "Ensure the PIC is reachable for compliance inquiries.",
+        done: Boolean(data.picName && data.picEmail && data.dpoContact),
+        label: "Ensure PIC dan kontak DPO tersedia untuk compliance inquiries.",
       },
       {
-        done: Boolean(data.legalBasis),
-        label: "Define the legal basis clearly to avoid regulatory risks.",
+        done: Boolean(
+          data.controllerProcessorContacts &&
+            data.legalBasis &&
+            data.processingPurpose &&
+            data.transferPurpose,
+        ),
+        label: "Pastikan dasar, tujuan pemrosesan, tujuan transfer, dan pihak terkait tercatat.",
       },
     ],
-    [data.departmentId, data.legalBasis, data.picEmail, data.picName],
+    [
+      data.controllerProcessorContacts,
+      data.departmentId,
+      data.dpoContact,
+      data.legalBasis,
+      data.picEmail,
+      data.picName,
+      data.processingPurpose,
+      data.transferPurpose,
+    ],
   );
 
   function update<K extends keyof WizardData>(key: K, value: WizardData[K]) {
@@ -401,11 +423,21 @@ function fieldLabel(field: string) {
     departmentId: "Unit Kerja",
     picName: "PIC",
     picEmail: "Email PIC",
+    controllerProcessorContacts:
+      "Nama dan Kontak Pengendali/Pengendali Bersama/Prosesor",
+    dpoContact: "Kontak DPO",
+    transferPurpose: "Tujuan Pengiriman Data Pribadi",
     processingPurpose: "Tujuan Pemrosesan",
+    sourceMechanism: "Sumber Pengumpulan Data Pribadi",
     subjectCategories: "Kategori Subjek Data",
     personalDataTypes: "Jenis Data Pribadi",
+    recipients: "Pihak selain Pengendali yang dapat mengakses Data Pribadi",
+    transferMechanism: "Rincian Transfer Data Pribadi",
     storageLocation: "Penyimpanan",
     retentionPeriod: "Retensi",
+    technicalMeasures: "Langkah Teknis",
+    organizationalMeasures: "Langkah Organisasi",
+    dataFlowMapping: "Pemetaan Aliran Data Pribadi",
     destinationCountry: "Negara Transfer",
     exportProtectionMechanism: "Mekanisme Pelindungan Ekspor",
     dataSubjectRights: "Hak Subjek Data Pribadi",
@@ -475,6 +507,30 @@ function IdentityStep({
         </div>
       </Field>
       <Field
+        label="Nama dan Kontak Pengendali/Pengendali Bersama/Prosesor *"
+        className="md:col-span-2"
+        help="Wajib. Cantumkan nama pihak dan kontak yang bisa dihubungi (email/telepon) untuk setiap peran yang relevan."
+      >
+        <Textarea
+          placeholder="Contoh: PT ABC (Pengendali) - dpo@abc.co.id; Vendor XYZ (Prosesor) - privacy@xyz.com"
+          value={data.controllerProcessorContacts}
+          onChange={(event) =>
+            update("controllerProcessorContacts", event.target.value)
+          }
+        />
+      </Field>
+      <Field
+        label="Kontak Pejabat/Petugas Pelindung Data Pribadi (DPO) *"
+        className="md:col-span-2"
+        help="Wajib. Isi kontak DPO/Petugas PDP yang bertanggung jawab atas aktivitas ini."
+      >
+        <Input
+          placeholder="dpo@company.com / +62..."
+          value={data.dpoContact}
+          onChange={(event) => update("dpoContact", event.target.value)}
+        />
+      </Field>
+      <Field
         label="Deskripsi Aktivitas *"
         className="md:col-span-2"
         help="Wajib, minimal 10 karakter. Jelaskan apa yang diproses, oleh siapa, dan konteks aktivitasnya."
@@ -539,9 +595,18 @@ function PurposeStep({
         </div>
       </Field>
       <Field
-        label="Sumber & Mekanisme Pemerolehan Data"
-        requirement="optional"
-        help="Opsional. Isi jika sumber data perlu dicatat, misalnya form, CRM, HRIS, vendor, atau API."
+        label="Tujuan Pengiriman Data Pribadi *"
+        help="Wajib. Isi tujuan pengiriman/berbagi data pribadi ke pihak internal/eksternal."
+      >
+        <Textarea
+          value={data.transferPurpose}
+          onChange={(event) => update("transferPurpose", event.target.value)}
+          placeholder="Contoh: Verifikasi vendor, pemrosesan payroll, atau pelaporan regulator."
+        />
+      </Field>
+      <Field
+        label="Sumber Pengumpulan Data Pribadi *"
+        help="Wajib. Jelaskan sumber pengumpulan data, misalnya form, CRM, HRIS, vendor, API, atau kanal lainnya."
       >
         <Input
           value={data.sourceMechanism}
@@ -797,14 +862,17 @@ function TransferStep({
 
   return (
     <div className="grid gap-5 md:grid-cols-2">
-      <Field label="Penerima Data" requirement="optional">
+      <Field
+        label="Pihak selain Pengendali yang dapat mengakses Data Pribadi *"
+        help="Wajib. Sebutkan nama pihak internal/eksternal di luar Pengendali yang memiliki akses."
+      >
         <Input
           value={data.recipients}
           onChange={(event) => update("recipients", event.target.value)}
           placeholder="Processor, partner, regulator..."
         />
       </Field>
-      <Field label="Peran Penerima" requirement="optional">
+      <Field label="Peran Pihak Terkait *" help="Wajib. Pilih peran utama pihak terkait.">
         <Select
           value={data.dataReceiverRole}
           onChange={(event) => update("dataReceiverRole", event.target.value)}
@@ -815,14 +883,20 @@ function TransferStep({
           <option>Regulator</option>
         </Select>
       </Field>
-      <Field label="Link Kontrak Pemroses" requirement="optional">
+      <Field
+        label="Kontak atau Referensi Kontrak Pihak Terkait *"
+        help="Wajib. Isi kontak pihak terkait dan/atau referensi kontrak pemrosesan."
+      >
         <Input
           value={data.processorContractLink}
           onChange={(event) => update("processorContractLink", event.target.value)}
-          placeholder="https://..."
+          placeholder="privacy@vendor.com atau https://..."
         />
       </Field>
-      <Field label="Mekanisme Pengiriman" requirement="optional">
+      <Field
+        label="Rincian Transfer Data Pribadi *"
+        help="Wajib. Jelaskan metode transfer seperti API, SFTP, portal vendor, atau media lain."
+      >
         <Input
           value={data.transferMechanism}
           onChange={(event) => update("transferMechanism", event.target.value)}
@@ -938,8 +1012,8 @@ function SecurityStep({
     <div className="grid gap-5 md:grid-cols-2">
       <Field
         label="Penyimpanan"
-        requirement="optional"
-        help="Opsional. Isi lokasi/sistem penyimpanan, misalnya Jakarta private cloud atau HRIS."
+        requirement="required"
+        help="Wajib. Isi lokasi/sistem penyimpanan, misalnya Jakarta private cloud atau HRIS."
       >
         <Input
           value={data.storageLocation}
@@ -949,8 +1023,8 @@ function SecurityStep({
       </Field>
       <Field
         label="Retensi"
-        requirement="optional"
-        help="Opsional. Isi periode retensi, misalnya 2 tahun, 7 tahun, atau sampai consent ditarik."
+        requirement="required"
+        help="Wajib. Isi periode retensi, misalnya 2 tahun, 7 tahun, atau sampai consent ditarik."
       >
         <Input
           value={data.retentionPeriod}
@@ -959,8 +1033,8 @@ function SecurityStep({
       </Field>
       <Field
         label="Langkah Teknis"
-        requirement="optional"
-        help="Opsional. Isi jika ada kontrol teknis seperti enkripsi, RBAC, logging, masking, atau backup."
+        requirement="required"
+        help="Wajib. Isi kontrol teknis seperti enkripsi, RBAC, logging, masking, atau backup."
       >
         <Textarea
           value={data.technicalMeasures}
@@ -970,8 +1044,8 @@ function SecurityStep({
       </Field>
       <Field
         label="Langkah Organisasi"
-        requirement="optional"
-        help="Opsional. Isi jika ada kontrol organisasi seperti SOP, training, approval, review akses, atau vendor due diligence."
+        requirement="required"
+        help="Wajib. Isi kontrol organisasi seperti SOP, training, approval, review akses, atau vendor due diligence."
       >
         <Textarea
           value={data.organizationalMeasures}
@@ -981,7 +1055,7 @@ function SecurityStep({
       </Field>
       <Field
         label="Hak Subjek Data Pribadi dapat dipenuhi / diakomodir"
-        requirement="optional"
+        requirement="required"
         className="md:col-span-2"
       >
         <div className="grid gap-3 lg:grid-cols-2">
@@ -1001,6 +1075,18 @@ function SecurityStep({
           Centang hak yang sudah dapat dipenuhi oleh proses, kanal, atau SOP yang
           tersedia. Pilihan ini akan masuk ke ringkasan RoPA dan draft asesmen.
         </p>
+      </Field>
+      <Field
+        label="Pemetaan Aliran Data Pribadi *"
+        requirement="required"
+        className="md:col-span-2"
+        help="Wajib. Jelaskan aliran data dari sumber, proses internal, pihak penerima, sampai retensi/pemusnahan."
+      >
+        <Textarea
+          value={data.dataFlowMapping}
+          onChange={(event) => update("dataFlowMapping", event.target.value)}
+          placeholder="Contoh: Data masuk dari form onboarding -> HRIS -> payroll processor -> arsip terenkripsi."
+        />
       </Field>
       <Field label="Konteks Historis - Sebelum" requirement="optional">
         <Input

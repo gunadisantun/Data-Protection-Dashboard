@@ -81,8 +81,13 @@ export const ropaActivities = pgTable("ropa_activities", {
   departmentId: text("department_id").notNull().references(() => departments.id),
   picName: text("pic_name").notNull(),
   picEmail: text("pic_email").notNull(),
+  controllerProcessorContacts: text("controller_processor_contacts")
+    .notNull()
+    .default(""),
+  dpoContact: text("dpo_contact").notNull().default(""),
   legalBasis: text("legal_basis").notNull(),
   processingPurpose: text("processing_purpose").notNull(),
+  transferPurpose: text("transfer_purpose").notNull().default(""),
   sourceMechanism: text("source_mechanism").notNull(),
   subjectCategories: jsonb("subject_categories")
     .$type<string[]>()
@@ -116,6 +121,7 @@ export const ropaActivities = pgTable("ropa_activities", {
   riskMitigationPlan: text("risk_mitigation_plan").notNull().default(""),
   volumeLevel: text("volume_level").notNull(),
   usesAutomatedDecisionMaking: boolean("uses_automated_decision_making").notNull(),
+  dataFlowMapping: text("data_flow_mapping").notNull().default(""),
   previousProcess: text("previous_process").notNull(),
   nextProcess: text("next_process").notNull(),
   status: text("status", { enum: ["Draft", "Active", "Archived"] }).notNull(),

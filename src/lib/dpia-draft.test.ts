@@ -18,6 +18,7 @@ describe("DPIA draft builder", () => {
     expect(draft.sections[0]?.rows[0]?.answer).toContain("Candidate screening");
     expect(draft.highRiskSignals.some((signal) => signal.selected)).toBe(true);
     expect(draft.risks).toEqual([]);
+    expect(draft.riskRegister).toEqual([]);
   });
 
   it("calculates 5x5 matrix levels from impact and likelihood", () => {
@@ -146,8 +147,12 @@ function makeAssessment(): Parameters<typeof buildDpiaDraft>[0] {
       departmentId: "dept-hr",
       picName: "Santi",
       picEmail: "santi@example.com",
+      controllerProcessorContacts:
+        "HR Controller - dpo@company.com; Background screening vendor - privacy@vendor.com",
+      dpoContact: "dpo@company.com",
       legalBasis: "Legitimate Interest",
       processingPurpose: "Evaluate candidates for hiring decisions.",
+      transferPurpose: "Screening and due diligence with processor",
       sourceMechanism: "Recruitment portal",
       subjectCategories: ["Candidates"],
       personalDataTypes: ["Contact Details", "Financial", "Geolocation"],
@@ -178,6 +183,8 @@ function makeAssessment(): Parameters<typeof buildDpiaDraft>[0] {
       riskMitigationPlan: "Complete DPIA and human review before go-live.",
       volumeLevel: "Large",
       usesAutomatedDecisionMaking: true,
+      dataFlowMapping:
+        "Recruitment portal -> HRIS screening -> background vendor -> hiring decision",
       previousProcess: "Candidate application",
       nextProcess: "Hiring decision",
       status: "Active",

@@ -6,6 +6,8 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Download,
+  FileSpreadsheet,
+  Filter,
   Grid3X3,
   Plus,
   Save,
@@ -20,18 +22,23 @@ import {
   calculateRiskProfile,
   createEmptyDpiaRisk,
   createEmptyExistingTreatment,
+  createEmptyRiskRegisterItem,
   createEmptyTreatmentPlan,
   serializeDpiaDraftNotes,
   type DpiaDraft,
   type DpiaDraftSection,
   type DpiaExistingTreatment,
   type DpiaRisk,
+  type DpiaRiskRegisterItem,
+  type DpiaRiskRegisterLevel,
+  type DpiaRiskRegisterStatus,
   type DpiaRiskProfile,
   type DpiaRiskLevel,
   type DpiaTreatmentPlan,
 } from "@/lib/dpia-draft";
 import type { AssessmentStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { Table, TBody, TD, TH, THead } from "@/components/ui/table";
 
 type DpiaWorkspaceProps = {
   draft: DpiaDraft;
@@ -72,6 +79,11 @@ const dpiaTabs = [
     description: "Risk event, treatment, residual, dan target risk",
   },
   {
+    id: "riskRegister",
+    label: "Risk Register",
+    description: "Daftar risiko, owner, status, dan tindak lanjut",
+  },
+  {
     id: "decision",
     label: "Decision",
     description: "Kesimpulan dan monitoring",
@@ -101,6 +113,18 @@ const mitigationApprovalOptions = [
   "Tidak Berlaku",
 ];
 
+const riskRegisterLevelOptions: DpiaRiskRegisterLevel[] = [
+  "Low",
+  "Medium",
+  "High",
+];
+
+const riskRegisterStatusOptions: DpiaRiskRegisterStatus[] = [
+  "Open",
+  "In Progress",
+  "Closed",
+];
+
 export function DpiaWorkspace({
   draft,
   assessmentId,
@@ -112,6 +136,12 @@ export function DpiaWorkspace({
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [activeTab, setActiveTab] = useState<DpiaTabId>("identity");
   const [activeRiskId, setActiveRiskId] = useState(draft.risks[0]?.id ?? "");
+  const [riskLevelFilter, setRiskLevelFilter] = useState<"all" | DpiaRiskRegisterLevel>(
+    "all",
+  );
+  const [riskStatusFilter, setRiskStatusFilter] = useState<"all" | DpiaRiskRegisterStatus>(
+    "all",
+  );
   const activeRisk = useMemo(
     () =>
       dpiaDraft.risks.find((risk) => risk.id === activeRiskId) ??
@@ -119,6 +149,16 @@ export function DpiaWorkspace({
     [activeRiskId, dpiaDraft.risks],
   );
   const activeTabIndex = dpiaTabs.findIndex((tab) => tab.id === activeTab);
+  const riskRegisterRows = useMemo(
+    () =>
+      dpiaDraft.riskRegister.filter((item) => {
+        const levelPass = riskLevelFilter === "all" || item.riskLevel === riskLevelFilter;
+        const statusPass =
+          riskStatusFilter === "all" || item.status === riskStatusFilter;
+        return levelPass && statusPass;
+      }),
+    [dpiaDraft.riskRegister, riskLevelFilter, riskStatusFilter],
+  );
 
   async function saveDraft(nextStatus: AssessmentStatus) {
     setSaveState("saving");
@@ -149,6 +189,14 @@ export function DpiaWorkspace({
 
     if (saved) {
       window.location.href = `/api/assessments/${assessmentId}/export`;
+    }
+  }
+
+  async function exportRiskRegisterExcel() {
+    const saved = await saveDraft(status);
+
+    if (saved) {
+      window.location.href = `/api/assessments/${assessmentId}/export?scope=risk-register`;
     }
   }
 
@@ -358,6 +406,35 @@ export function DpiaWorkspace({
             }
           : risk,
       ),
+    }));
+  }
+
+  function addRiskRegisterItem() {
+    const nextNumber = nextRiskRegisterNumber(dpiaDraft.riskRegister);
+    const nextItem = createEmptyRiskRegisterItem(nextNumber);
+
+    setDpiaDraft((current) => ({
+      ...current,
+      riskRegister: [...current.riskRegister, nextItem],
+    }));
+  }
+
+  function updateRiskRegisterItem(
+    id: string,
+    patch: Partial<DpiaRiskRegisterItem>,
+  ) {
+    setDpiaDraft((current) => ({
+      ...current,
+      riskRegister: current.riskRegister.map((item) =>
+        item.id === id ? { ...item, ...patch } : item,
+      ),
+    }));
+  }
+
+  function removeRiskRegisterItem(id: string) {
+    setDpiaDraft((current) => ({
+      ...current,
+      riskRegister: current.riskRegister.filter((item) => item.id !== id),
     }));
   }
 
@@ -878,6 +955,211 @@ export function DpiaWorkspace({
               </div>
             )}
           </div>
+        </CardContent>
+      </Card>
+      ) : null}
+
+      {activeTab === "riskRegister" ? (
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
+          <div>
+            <CardTitle className="text-xl">Risk Register</CardTitle>
+            <p className="mt-1 text-sm text-slate-500">
+              Catat risiko DPIA, kontrol yang ada, tindak lanjut, owner, target waktu,
+              dan status monitoring.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => void exportRiskRegisterExcel()}>
+              <FileSpreadsheet className="h-4 w-4" />
+              Export Risk Register
+            </Button>
+            <Button onClick={addRiskRegisterItem}>
+              <Plus className="h-4 w-4" />
+              Add Risk
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <RegisterSummaryCard
+              label="Total Risiko"
+              value={dpiaDraft.riskRegister.length}
+              tone="slate"
+            />
+            <RegisterSummaryCard
+              label="Risiko High"
+              value={dpiaDraft.riskRegister.filter((item) => item.riskLevel === "High").length}
+              tone="red"
+            />
+            <RegisterSummaryCard
+              label="Status Open"
+              value={dpiaDraft.riskRegister.filter((item) => item.status === "Open").length}
+              tone="yellow"
+            />
+            <RegisterSummaryCard
+              label="Status Closed"
+              value={dpiaDraft.riskRegister.filter((item) => item.status === "Closed").length}
+              tone="green"
+            />
+          </div>
+
+          <div className="grid gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 md:grid-cols-[1fr_1fr_auto]">
+            <FieldSelect
+              label="Filter Risk Level"
+              value={riskLevelFilter}
+              options={["all", ...riskRegisterLevelOptions]}
+              onChange={(value) => setRiskLevelFilter(value as "all" | DpiaRiskRegisterLevel)}
+            />
+            <FieldSelect
+              label="Filter Status"
+              value={riskStatusFilter}
+              options={["all", ...riskRegisterStatusOptions]}
+              onChange={(value) => setRiskStatusFilter(value as "all" | DpiaRiskRegisterStatus)}
+            />
+            <div className="flex items-end">
+              <Button
+                variant="secondary"
+                className="w-full md:w-auto"
+                onClick={() => {
+                  setRiskLevelFilter("all");
+                  setRiskStatusFilter("all");
+                }}
+              >
+                <Filter className="h-4 w-4" />
+                Reset Filter
+              </Button>
+            </div>
+          </div>
+
+          <Table className="min-w-[1280px]">
+            <THead>
+              <tr>
+                <TH>Risk ID</TH>
+                <TH>Risk Description</TH>
+                <TH>Potential Impact</TH>
+                <TH>Existing Control</TH>
+                <TH>Risk Level</TH>
+                <TH>Recommended Action</TH>
+                <TH>Risk Owner</TH>
+                <TH>Target Date</TH>
+                <TH>Status</TH>
+                <TH>Remarks</TH>
+                <TH>Action</TH>
+              </tr>
+            </THead>
+            <TBody>
+              {riskRegisterRows.length ? (
+                riskRegisterRows.map((item) => (
+                  <tr key={item.id}>
+                    <TD className="align-top">
+                      <input
+                        value={item.riskId}
+                        disabled
+                        className="h-9 w-28 rounded-md border border-slate-200 bg-slate-100 px-3 text-xs font-bold text-slate-600"
+                      />
+                    </TD>
+                    <TD className="align-top">
+                      <InlineTextarea
+                        value={item.riskDescription}
+                        onChange={(value) =>
+                          updateRiskRegisterItem(item.id, { riskDescription: value })
+                        }
+                      />
+                    </TD>
+                    <TD className="align-top">
+                      <InlineTextarea
+                        value={item.potentialImpact}
+                        onChange={(value) =>
+                          updateRiskRegisterItem(item.id, { potentialImpact: value })
+                        }
+                      />
+                    </TD>
+                    <TD className="align-top">
+                      <InlineTextarea
+                        value={item.existingControl}
+                        onChange={(value) =>
+                          updateRiskRegisterItem(item.id, { existingControl: value })
+                        }
+                      />
+                    </TD>
+                    <TD className="align-top">
+                      <InlineSelect
+                        value={item.riskLevel}
+                        options={riskRegisterLevelOptions}
+                        onChange={(value) =>
+                          updateRiskRegisterItem(item.id, {
+                            riskLevel: value as DpiaRiskRegisterLevel,
+                          })
+                        }
+                      />
+                    </TD>
+                    <TD className="align-top">
+                      <InlineTextarea
+                        value={item.recommendedAction}
+                        onChange={(value) =>
+                          updateRiskRegisterItem(item.id, { recommendedAction: value })
+                        }
+                      />
+                    </TD>
+                    <TD className="align-top">
+                      <InlineInput
+                        value={item.riskOwner}
+                        onChange={(value) =>
+                          updateRiskRegisterItem(item.id, { riskOwner: value })
+                        }
+                      />
+                    </TD>
+                    <TD className="align-top">
+                      <InlineInput
+                        type="date"
+                        value={item.targetDate}
+                        onChange={(value) =>
+                          updateRiskRegisterItem(item.id, { targetDate: value })
+                        }
+                      />
+                    </TD>
+                    <TD className="align-top">
+                      <InlineSelect
+                        value={item.status}
+                        options={riskRegisterStatusOptions}
+                        onChange={(value) =>
+                          updateRiskRegisterItem(item.id, {
+                            status: value as DpiaRiskRegisterStatus,
+                          })
+                        }
+                      />
+                    </TD>
+                    <TD className="align-top">
+                      <InlineTextarea
+                        value={item.remarks}
+                        onChange={(value) =>
+                          updateRiskRegisterItem(item.id, { remarks: value })
+                        }
+                      />
+                    </TD>
+                    <TD className="align-top">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                        onClick={() => removeRiskRegisterItem(item.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Delete
+                      </Button>
+                    </TD>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <TD colSpan={11} className="py-8 text-center text-slate-500">
+                    Belum ada risiko pada register dengan filter saat ini.
+                  </TD>
+                </tr>
+              )}
+            </TBody>
+          </Table>
         </CardContent>
       </Card>
       ) : null}
@@ -1434,6 +1716,32 @@ function SummaryItem({ label, value }: { label: string; value: string }) {
   );
 }
 
+function RegisterSummaryCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "slate" | "red" | "yellow" | "green";
+}) {
+  const style =
+    tone === "red"
+      ? "border-red-200 bg-red-50 text-red-700"
+      : tone === "yellow"
+        ? "border-amber-200 bg-amber-50 text-amber-700"
+        : tone === "green"
+          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+          : "border-slate-200 bg-slate-50 text-slate-700";
+
+  return (
+    <div className={`rounded-lg border p-4 ${style}`}>
+      <div className="text-[11px] font-bold uppercase tracking-wide">{label}</div>
+      <div className="mt-2 text-3xl font-bold">{value}</div>
+    </div>
+  );
+}
+
 function RiskBadge({ level }: { level: DpiaRiskLevel }) {
   return (
     <Badge
@@ -1535,6 +1843,66 @@ function FieldTextarea({
   );
 }
 
+function InlineInput({
+  value,
+  onChange,
+  type = "text",
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  type?: "date" | "text";
+}) {
+  return (
+    <input
+      type={type}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className="h-9 w-full min-w-[160px] rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+    />
+  );
+}
+
+function InlineSelect({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: readonly string[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className="h-9 min-w-[132px] rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+    >
+      {options.map((option) => (
+        <option key={option} value={option}>
+          {option}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function InlineTextarea({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <textarea
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      rows={3}
+      className="w-full min-w-[180px] resize-y rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs leading-5 text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+    />
+  );
+}
+
 function riskCellClass(level: DpiaRiskLevel) {
   switch (level) {
     case "High":
@@ -1578,6 +1946,15 @@ function shortRiskLabel(level: DpiaRiskLevel) {
 
 function nextRiskNumber(risks: DpiaRisk[]) {
   return risks.reduce((max, risk) => Math.max(max, risk.number), 0) + 1;
+}
+
+function nextRiskRegisterNumber(items: DpiaRiskRegisterItem[]) {
+  const maxNumber = items.reduce((max, item) => {
+    const numeric = Number(item.riskId.replace(/^RR-/, ""));
+    return Number.isFinite(numeric) ? Math.max(max, numeric) : max;
+  }, 0);
+
+  return maxNumber + 1;
 }
 
 function renumberRisks(risks: DpiaRisk[]) {
