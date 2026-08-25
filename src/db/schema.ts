@@ -182,6 +182,136 @@ export const assessments = pgTable("assessments", {
   updatedAt: text("updated_at").notNull(),
 });
 
+export const aiImpactAssessments = pgTable("ai_impact_assessments", {
+  id: text("id").primaryKey(),
+  assessmentNumber: text("assessment_number").notNull().unique(),
+  primaryRopaId: text("primary_ropa_id").references(() => ropaActivities.id, {
+    onDelete: "set null",
+  }),
+  relatedRopaIds: jsonb("related_ropa_ids").$type<string[]>().notNull().default([]),
+  relatedDpiaId: text("related_dpia_id").references(() => assessments.id, {
+    onDelete: "set null",
+  }),
+  relatedLiaId: text("related_lia_id").references(() => assessments.id, {
+    onDelete: "set null",
+  }),
+  relatedTiaId: text("related_tia_id").references(() => assessments.id, {
+    onDelete: "set null",
+  }),
+  departmentId: text("department_id").notNull().references(() => departments.id),
+  status: text("status", { enum: ["Draft", "In Progress", "Completed", "Archived"] })
+    .notNull()
+    .default("Draft"),
+  approvalStatus: text("approval_status").notNull().default("Not Started"),
+  ownerName: text("owner_name").notNull().default(""),
+  aiSystem: text("ai_system").notNull(),
+  businessOwner: text("business_owner").notNull().default(""),
+  intendedPurpose: text("intended_purpose").notNull().default(""),
+  providerDeveloper: text("provider_developer").notNull().default(""),
+  affectedPersons: text("affected_persons").notNull().default(""),
+  jurisdictions: text("jurisdictions").notNull().default(""),
+  intendedBenefit: text("intended_benefit").notNull().default(""),
+  foreseeableMisuse: text("foreseeable_misuse").notNull().default(""),
+  importedSnapshot: jsonb("imported_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+  provenance: jsonb("provenance")
+    .$type<
+      Record<
+        string,
+        {
+          sourceModule: "ROPA" | "DPIA" | "LIA" | "TIA";
+          sourceId: string;
+          sourceField: string;
+          importedAt: string;
+          importedBy: string;
+        }
+      >
+    >()
+    .notNull()
+    .default({}),
+  impactDomains: jsonb("impact_domains")
+    .$type<
+      Array<{
+        id: string;
+        domain: string;
+        potentialNegativeImpact: string;
+        affectedPersonGroup: string;
+        severity: number | null;
+        likelihood: number | null;
+        inherentScore: number | null;
+        existingControls: string;
+        controlEffectiveness: number;
+        residualScore: number | null;
+        residualRiskLevel: "Low" | "Medium" | "High" | "Critical" | "";
+        furtherAction: string;
+        owner: string;
+        status: "Not Started" | "In Progress" | "Completed" | "Accepted";
+      }>
+    >()
+    .notNull(),
+  friaScreening: jsonb("fria_screening")
+    .$type<Record<string, "Yes" | "No" | "Potential" | "TBD" | "N/A" | "">>()
+    .notNull()
+    .default({}),
+  friaStatus: text("fria_status", {
+    enum: ["FRIA REQUIRED", "FRIA NOT TRIGGERED", "FURTHER ASSESSMENT"],
+  })
+    .notNull()
+    .default("FURTHER ASSESSMENT"),
+  friaItems: jsonb("fria_items")
+    .$type<
+      Array<{
+        id: string;
+        article: string;
+        question: string;
+        response: string;
+        evidenceReference: string;
+        owner: string;
+        status: "Not Started" | "In Progress" | "Completed" | "N/A";
+      }>
+    >()
+    .notNull(),
+  friaCompletion: integer("fria_completion").notNull().default(0),
+  dataProtection: jsonb("data_protection")
+    .$type<{
+      processesPersonalData: "Yes" | "No" | "TBD";
+      result: string;
+    }>()
+    .notNull(),
+  specialistAssessment: jsonb("specialist_assessment")
+    .$type<{
+      required: "Yes" | "No" | "TBD";
+      types: string[];
+    }>()
+    .notNull(),
+  highestResidualRisk: text("highest_residual_risk", {
+    enum: ["Low", "Medium", "High", "Critical", "Incomplete"],
+  })
+    .notNull()
+    .default("Incomplete"),
+  finalDecision: text("final_decision").notNull(),
+  createdBy: text("created_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  updatedBy: text("updated_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const assessmentLinks = pgTable("assessment_links", {
+  id: text("id").primaryKey(),
+  sourceModule: text("source_module").notNull(),
+  sourceId: text("source_id").notNull(),
+  targetModule: text("target_module").notNull(),
+  targetId: text("target_id").notNull(),
+  relationType: text("relation_type").notNull(),
+  createdAt: text("created_at").notNull(),
+  createdBy: text("created_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+});
+
 export const riskRegisterEntries = pgTable("risk_register_entries", {
   id: text("id").primaryKey(),
   riskId: text("risk_id").notNull(),
@@ -462,6 +592,7 @@ export const departmentsRelations = relations(departments, ({ many }) => ({
   riskRegisterEntries: many(riskRegisterEntries),
   breachReports: many(breachReports),
   selfAssessments: many(selfAssessments),
+  aiImpactAssessments: many(aiImpactAssessments),
 }));
 
 export const usersRelations = relations(users, ({ one, many }) => ({
@@ -476,6 +607,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   breachReports: many(breachReports),
   selfAssessments: many(selfAssessments),
   privacyMapOverrides: many(privacyMapOverrides),
+  aiImpactAssessments: many(aiImpactAssessments),
 }));
 
 export const ropaRelations = relations(ropaActivities, ({ one, many }) => ({
@@ -489,6 +621,7 @@ export const ropaRelations = relations(ropaActivities, ({ one, many }) => ({
   }),
   assessments: many(assessments),
   riskRegisterEntries: many(riskRegisterEntries),
+  aiImpactAssessments: many(aiImpactAssessments),
 }));
 
 export const assessmentsRelations = relations(assessments, ({ one }) => ({
@@ -501,6 +634,28 @@ export const assessmentsRelations = relations(assessments, ({ one }) => ({
     references: [departments.id],
   }),
 }));
+
+export const aiImpactAssessmentsRelations = relations(
+  aiImpactAssessments,
+  ({ one }) => ({
+    department: one(departments, {
+      fields: [aiImpactAssessments.departmentId],
+      references: [departments.id],
+    }),
+    primaryRopa: one(ropaActivities, {
+      fields: [aiImpactAssessments.primaryRopaId],
+      references: [ropaActivities.id],
+    }),
+    creator: one(users, {
+      fields: [aiImpactAssessments.createdBy],
+      references: [users.id],
+    }),
+    updater: one(users, {
+      fields: [aiImpactAssessments.updatedBy],
+      references: [users.id],
+    }),
+  }),
+);
 
 export const riskRegisterRelations = relations(riskRegisterEntries, ({ one }) => ({
   assessment: one(assessments, {

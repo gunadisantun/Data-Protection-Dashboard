@@ -4,7 +4,9 @@ import { db } from "@/db/client";
 import { ensureDatabase } from "@/db/init";
 import {
   account,
+  aiImpactAssessments,
   assessments,
+  assessmentLinks,
   auditEvents,
   breachReports,
   departments,
@@ -42,6 +44,18 @@ import {
   saveOfflineStorageObject,
 } from "@/lib/offline-runtime";
 import { analyzeRopa } from "@/lib/rule-engine";
+import {
+  buildAiImpactDerivedState,
+  buildDefaultFriaItems,
+  buildDefaultFriaScreening,
+  buildDefaultImpactDomains,
+  joinTransferCountries,
+  type AiImpactDataProtection,
+  type AiImpactDomain,
+  type AiImpactFriaItem,
+  type AiImpactFriaScreening,
+  type AiImpactSpecialistAssessment,
+} from "@/lib/ai-impact";
 import { emptyBreachReportAnswers } from "@/lib/breach-report-fields";
 import {
   allowedKindsForRole,
@@ -189,6 +203,36 @@ export async function cleanupDemoSession(sessionId: string) {
             .where(inArray(assessments.ropaId, demoRopaIds))
         ).map((assessment) => assessment.id)
       : [];
+
+    const demoAiImpactIds = demoRopaIds.length
+      ? (
+          await tx
+            .select({ id: aiImpactAssessments.id })
+            .from(aiImpactAssessments)
+            .where(inArray(aiImpactAssessments.primaryRopaId, demoRopaIds))
+        ).map((assessment) => assessment.id)
+      : [];
+
+    if (demoAiImpactIds.length) {
+      await tx.delete(auditEvents).where(inArray(auditEvents.entityId, demoAiImpactIds));
+      await tx
+        .delete(assessmentLinks)
+        .where(
+          or(
+            and(
+              eq(assessmentLinks.sourceModule, "AIIA"),
+              inArray(assessmentLinks.sourceId, demoAiImpactIds),
+            ),
+            and(
+              eq(assessmentLinks.targetModule, "AIIA"),
+              inArray(assessmentLinks.targetId, demoAiImpactIds),
+            ),
+          ),
+        );
+      await tx
+        .delete(aiImpactAssessments)
+        .where(inArray(aiImpactAssessments.id, demoAiImpactIds));
+    }
 
     if (demoAssessmentIds.length) {
       await tx.delete(auditEvents).where(inArray(auditEvents.entityId, demoAssessmentIds));
@@ -2197,6 +2241,478 @@ export async function getAssessmentById(id: string, scope?: AccessScope) {
   }
 
   return assessment;
+}
+
+export type AiImpactAssessmentListRow = Awaited<
+  ReturnType<typeof listAiImpactAssessments>
+>[number];
+
+export type AiImpactAssessmentDetail = NonNullable<
+  Awaited<ReturnType<typeof getAiImpactAssessmentById>>
+>;
+
+export async function listAiImpactAssessments(scope?: AccessScope) {
+  await ensureDatabase();
+  const scopedDepartment = departmentForScope(scope);
+  const conditions = [
+    scopedDepartment ? eq(aiImpactAssessments.departmentId, scopedDepartment) : undefined,
+  ].filter((condition) => Boolean(condition));
+
+  return db
+    .select({
+      id: aiImpactAssessments.id,
+      assessmentNumber: aiImpactAssessments.assessmentNumber,
+      aiSystem: aiImpactAssessments.aiSystem,
+      ownerName: aiImpactAssessments.ownerName,
+      status: aiImpactAssessments.status,
+      approvalStatus: aiImpactAssessments.approvalStatus,
+      friaStatus: aiImpactAssessments.friaStatus,
+      friaCompletion: aiImpactAssessments.friaCompletion,
+      highestResidualRisk: aiImpactAssessments.highestResidualRisk,
+      finalDecision: aiImpactAssessments.finalDecision,
+      departmentId: aiImpactAssessments.departmentId,
+      departmentName: departments.name,
+      primaryRopaId: aiImpactAssessments.primaryRopaId,
+      activityName: ropaActivities.activityName,
+      updatedAt: aiImpactAssessments.updatedAt,
+      createdAt: aiImpactAssessments.createdAt,
+    })
+    .from(aiImpactAssessments)
+    .innerJoin(departments, eq(aiImpactAssessments.departmentId, departments.id))
+    .leftJoin(ropaActivities, eq(aiImpactAssessments.primaryRopaId, ropaActivities.id))
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(aiImpactAssessments.updatedAt));
+}
+
+export async function getAiImpactAssessmentById(id: string, scope?: AccessScope) {
+  await ensureDatabase();
+
+  const assessment = await db.query.aiImpactAssessments.findFirst({
+    where: eq(aiImpactAssessments.id, id),
+    with: {
+      department: true,
+      primaryRopa: {
+        with: {
+          assessments: true,
+          department: true,
+        },
+      },
+      creator: true,
+      updater: true,
+    },
+  });
+
+  if (!assessment) {
+    return null;
+  }
+
+  if (!hasScopeAccess(scope, assessment.departmentId)) {
+    return null;
+  }
+
+  return assessment;
+}
+
+export async function createAiImpactAssessmentFromRopa(
+  payload: { primaryRopaId: string },
+  scope: AccessScope,
+  actorId: string,
+) {
+  await ensureDatabase();
+  const ropa = await getRopaById(payload.primaryRopaId, scope);
+
+  if (!ropa) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  const relatedDpiaId =
+    ropa.assessments.find((assessment) => assessment.taskType === "DPIA")?.id ?? null;
+  const relatedLiaId =
+    ropa.assessments.find((assessment) => assessment.taskType === "LIA")?.id ?? null;
+  const relatedTiaId =
+    ropa.assessments.find((assessment) => assessment.taskType === "TIA")?.id ?? null;
+  const existingControls = [
+    ropa.technicalMeasures,
+    ropa.organizationalMeasures,
+    ropa.retentionPeriod ? `Retention: ${ropa.retentionPeriod}` : "",
+    ropa.exportProtectionMechanism
+      ? `Transfer safeguard: ${ropa.exportProtectionMechanism}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const transferItems =
+    "transferItems" in ropa && Array.isArray(ropa.transferItems)
+      ? (ropa.transferItems as RopaTransferItem[])
+      : [];
+  const destinationCountries =
+    joinTransferCountries(transferItems) || ropa.destinationCountry || ropa.storageLocation;
+  const impactDomains = buildDefaultImpactDomains(existingControls);
+  const friaScreening = {
+    ...buildDefaultFriaScreening(),
+    highRiskAiSystem:
+      ropa.highRiskCategories.length ||
+      ropa.usesAutomatedDecisionMaking ||
+      ropa.riskAssessmentLevel === "High"
+        ? "Potential"
+        : "TBD",
+  } as AiImpactFriaScreening;
+  const friaItems = buildDefaultFriaItems();
+  const dataProtection: AiImpactDataProtection = {
+    processesPersonalData: "Yes",
+    result:
+      "Imported from RoPA because the linked processing activity processes personal data.",
+  };
+  const specialistAssessment: AiImpactSpecialistAssessment = {
+    required: relatedDpiaId || relatedLiaId || relatedTiaId ? "Yes" : "TBD",
+    types: [
+      relatedDpiaId ? "DPIA" : "",
+      relatedLiaId ? "LIA" : "",
+      relatedTiaId ? "TIA" : "",
+    ].filter(Boolean),
+  };
+  const derived = buildAiImpactDerivedState({
+    impactDomains,
+    friaScreening,
+    friaItems,
+    dataProtection,
+    specialistAssessment,
+  });
+  const id = `aiia-${crypto.randomUUID()}`;
+  const suffix = Date.now().toString().slice(-6);
+  const assessmentNumber = `AIIA-${new Date().getFullYear()}-${suffix}`;
+
+  await db.transaction(async (tx) => {
+    await tx.insert(aiImpactAssessments).values({
+      id,
+      assessmentNumber,
+      primaryRopaId: ropa.id,
+      relatedRopaIds: [ropa.id],
+      relatedDpiaId,
+      relatedLiaId,
+      relatedTiaId,
+      departmentId: ropa.departmentId,
+      status: "Draft",
+      approvalStatus: "Not Started",
+      ownerName: ropa.picName,
+      aiSystem: `${ropa.activityName} AI Use Case`,
+      businessOwner: ropa.department.name,
+      intendedPurpose: ropa.processingPurpose,
+      providerDeveloper: ropa.recipients,
+      affectedPersons: ropa.subjectCategories.join(", "),
+      jurisdictions: destinationCountries,
+      intendedBenefit: ropa.processingPurpose,
+      foreseeableMisuse:
+        ropa.usesAutomatedDecisionMaking || ropa.highRiskCategories.length
+          ? "Potential automated or high-impact processing identified from RoPA."
+          : "",
+      importedSnapshot: {
+        ropaId: ropa.id,
+        activityName: ropa.activityName,
+        department: ropa.department.name,
+        legalBasis: ropa.legalBasis,
+        subjectCategories: ropa.subjectCategories,
+        personalDataTypes: ropa.personalDataTypes,
+        highRiskCategories: ropa.highRiskCategories,
+        transferItems,
+      },
+      provenance: {
+        aiSystem: {
+          sourceModule: "ROPA",
+          sourceId: ropa.id,
+          sourceField: "activityName",
+          importedAt: now,
+          importedBy: actorId,
+        },
+        intendedPurpose: {
+          sourceModule: "ROPA",
+          sourceId: ropa.id,
+          sourceField: "processingPurpose",
+          importedAt: now,
+          importedBy: actorId,
+        },
+        affectedPersons: {
+          sourceModule: "ROPA",
+          sourceId: ropa.id,
+          sourceField: "subjectCategories",
+          importedAt: now,
+          importedBy: actorId,
+        },
+      },
+      impactDomains: derived.impactDomains,
+      friaScreening,
+      friaStatus: derived.friaStatus,
+      friaItems,
+      friaCompletion: derived.friaCompletion,
+      dataProtection,
+      specialistAssessment,
+      highestResidualRisk: derived.highestResidualRisk,
+      finalDecision: derived.finalDecision,
+      createdBy: actorId,
+      updatedBy: actorId,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const links = [
+      { targetModule: "ROPA", targetId: ropa.id },
+      relatedDpiaId ? { targetModule: "DPIA", targetId: relatedDpiaId } : null,
+      relatedLiaId ? { targetModule: "LIA", targetId: relatedLiaId } : null,
+      relatedTiaId ? { targetModule: "TIA", targetId: relatedTiaId } : null,
+    ].filter((link): link is { targetModule: string; targetId: string } =>
+      Boolean(link),
+    );
+
+    await tx.insert(assessmentLinks).values(
+      links.map((link) => ({
+        id: `link-${crypto.randomUUID()}`,
+        sourceModule: "AIIA",
+        sourceId: id,
+        targetModule: link.targetModule,
+        targetId: link.targetId,
+        relationType: link.targetModule === "ROPA" ? "primary-source" : "supporting",
+        createdAt: now,
+        createdBy: actorId,
+      })),
+    );
+
+    await tx.insert(auditEvents).values({
+      id: `audit-${crypto.randomUUID()}`,
+      actorId,
+      eventType: "aiia.created",
+      entityType: "ai-impact-assessment",
+      entityId: id,
+      message: `Created AIIA ${assessmentNumber} from RoPA ${ropa.activityName}.`,
+      createdAt: now,
+    });
+  });
+
+  return getAiImpactAssessmentById(id, scope);
+}
+
+export async function updateAiImpactAssessment(
+  id: string,
+  payload: Partial<{
+    status: "Draft" | "In Progress" | "Completed" | "Archived";
+    approvalStatus: string;
+    ownerName: string;
+    aiSystem: string;
+    businessOwner: string;
+    intendedPurpose: string;
+    providerDeveloper: string;
+    affectedPersons: string;
+    jurisdictions: string;
+    intendedBenefit: string;
+    foreseeableMisuse: string;
+    impactDomains: AiImpactDomain[];
+    friaScreening: AiImpactFriaScreening;
+    friaItems: AiImpactFriaItem[];
+    dataProtection: AiImpactDataProtection;
+    specialistAssessment: AiImpactSpecialistAssessment;
+  }>,
+  scope: AccessScope,
+  actorId: string,
+) {
+  await ensureDatabase();
+  const existing = await getAiImpactAssessmentById(id, scope);
+
+  if (!existing) {
+    return null;
+  }
+
+  const draft = {
+    impactDomains: payload.impactDomains ?? existing.impactDomains,
+    friaScreening: payload.friaScreening ?? existing.friaScreening,
+    friaItems: payload.friaItems ?? existing.friaItems,
+    dataProtection: payload.dataProtection ?? existing.dataProtection,
+    specialistAssessment: payload.specialistAssessment ?? existing.specialistAssessment,
+  };
+  const derived = buildAiImpactDerivedState(draft);
+  const updatedAt = new Date().toISOString();
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(aiImpactAssessments)
+      .set({
+        ...(payload.status ? { status: payload.status } : {}),
+        ...(typeof payload.approvalStatus === "string"
+          ? { approvalStatus: payload.approvalStatus }
+          : {}),
+        ...(typeof payload.ownerName === "string" ? { ownerName: payload.ownerName } : {}),
+        ...(typeof payload.aiSystem === "string" ? { aiSystem: payload.aiSystem } : {}),
+        ...(typeof payload.businessOwner === "string"
+          ? { businessOwner: payload.businessOwner }
+          : {}),
+        ...(typeof payload.intendedPurpose === "string"
+          ? { intendedPurpose: payload.intendedPurpose }
+          : {}),
+        ...(typeof payload.providerDeveloper === "string"
+          ? { providerDeveloper: payload.providerDeveloper }
+          : {}),
+        ...(typeof payload.affectedPersons === "string"
+          ? { affectedPersons: payload.affectedPersons }
+          : {}),
+        ...(typeof payload.jurisdictions === "string"
+          ? { jurisdictions: payload.jurisdictions }
+          : {}),
+        ...(typeof payload.intendedBenefit === "string"
+          ? { intendedBenefit: payload.intendedBenefit }
+          : {}),
+        ...(typeof payload.foreseeableMisuse === "string"
+          ? { foreseeableMisuse: payload.foreseeableMisuse }
+          : {}),
+        impactDomains: derived.impactDomains,
+        friaScreening: draft.friaScreening,
+        friaStatus: derived.friaStatus,
+        friaItems: draft.friaItems,
+        friaCompletion: derived.friaCompletion,
+        dataProtection: draft.dataProtection,
+        specialistAssessment: draft.specialistAssessment,
+        highestResidualRisk: derived.highestResidualRisk,
+        finalDecision: derived.finalDecision,
+        updatedBy: actorId,
+        updatedAt,
+      })
+      .where(eq(aiImpactAssessments.id, id));
+
+    await tx.insert(auditEvents).values({
+      id: `audit-${crypto.randomUUID()}`,
+      actorId,
+      eventType: "aiia.updated",
+      entityType: "ai-impact-assessment",
+      entityId: id,
+      message: `Updated AIIA ${existing.assessmentNumber}.`,
+      createdAt: updatedAt,
+    });
+  });
+
+  return getAiImpactAssessmentById(id, scope);
+}
+
+export async function deleteAiImpactAssessment(
+  id: string,
+  scope: AccessScope,
+  actorId: string,
+) {
+  await ensureDatabase();
+  const existing = await getAiImpactAssessmentById(id, scope);
+
+  if (!existing) {
+    return false;
+  }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(assessmentLinks)
+      .where(
+        or(
+          and(eq(assessmentLinks.sourceModule, "AIIA"), eq(assessmentLinks.sourceId, id)),
+          and(eq(assessmentLinks.targetModule, "AIIA"), eq(assessmentLinks.targetId, id)),
+        ),
+      );
+    await tx.delete(auditEvents).where(eq(auditEvents.entityId, id));
+    await tx.delete(aiImpactAssessments).where(eq(aiImpactAssessments.id, id));
+    await tx.insert(auditEvents).values({
+      id: `audit-${crypto.randomUUID()}`,
+      actorId,
+      eventType: "aiia.deleted",
+      entityType: "ai-impact-assessment",
+      entityId: id,
+      message: `Deleted AIIA ${existing.assessmentNumber}.`,
+      createdAt: new Date().toISOString(),
+    });
+  });
+
+  return true;
+}
+
+export async function createAiImpactSupportingAssessment(
+  id: string,
+  taskType: AssessmentType,
+  scope: AccessScope,
+  actorId: string,
+) {
+  await ensureDatabase();
+  const aiia = await getAiImpactAssessmentById(id, scope);
+
+  if (!aiia?.primaryRopaId || !["DPIA", "TIA", "LIA"].includes(taskType)) {
+    return null;
+  }
+
+  const existingId =
+    taskType === "DPIA"
+      ? aiia.relatedDpiaId
+      : taskType === "TIA"
+        ? aiia.relatedTiaId
+        : aiia.relatedLiaId;
+
+  if (existingId) {
+    return getAssessmentById(existingId, scope);
+  }
+
+  const now = new Date().toISOString();
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + (taskType === "DPIA" ? 7 : 14));
+  const taskId = `task-${crypto.randomUUID()}`;
+  const reason =
+    taskType === "DPIA"
+      ? `Generated from AIIA ${aiia.assessmentNumber}: privacy or high-impact AI risk requires DPIA review.`
+      : taskType === "TIA"
+        ? `Generated from AIIA ${aiia.assessmentNumber}: jurisdiction or transfer context requires TIA review.`
+        : `Generated from AIIA ${aiia.assessmentNumber}: lawful basis or balancing context requires LIA review.`;
+
+  await db.transaction(async (tx) => {
+    await tx.insert(assessments).values({
+      id: taskId,
+      ropaId: aiia.primaryRopaId!,
+      taskType,
+      status: "Todo",
+      severity: "Required",
+      title: `${taskType} for ${aiia.aiSystem}`,
+      reason,
+      notes: "",
+      dueDate: dueDate.toISOString(),
+      picName: aiia.ownerName || aiia.businessOwner || "Owner",
+      departmentId: aiia.departmentId,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await tx
+      .update(aiImpactAssessments)
+      .set({
+        ...(taskType === "DPIA" ? { relatedDpiaId: taskId } : {}),
+        ...(taskType === "TIA" ? { relatedTiaId: taskId } : {}),
+        ...(taskType === "LIA" ? { relatedLiaId: taskId } : {}),
+        updatedAt: now,
+        updatedBy: actorId,
+      })
+      .where(eq(aiImpactAssessments.id, id));
+
+    await tx.insert(assessmentLinks).values({
+      id: `link-${crypto.randomUUID()}`,
+      sourceModule: "AIIA",
+      sourceId: id,
+      targetModule: taskType,
+      targetId: taskId,
+      relationType: "generated-supporting-assessment",
+      createdAt: now,
+      createdBy: actorId,
+    });
+
+    await tx.insert(auditEvents).values({
+      id: `audit-${crypto.randomUUID()}`,
+      actorId,
+      eventType: "aiia.supporting_assessment_created",
+      entityType: "ai-impact-assessment",
+      entityId: id,
+      message: `Created ${taskType} task from AIIA ${aiia.assessmentNumber}.`,
+      createdAt: now,
+    });
+  });
+
+  return getAssessmentById(taskId, scope);
 }
 
 export async function getAuditEvents(limit = 8, scope?: AccessScope) {

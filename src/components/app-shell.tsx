@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Bell,
+  BrainCircuit,
   ClipboardCheck,
   CircleAlert,
   FileText,
@@ -72,6 +73,7 @@ const masterAdminNavItems: NavItem[] = [
     icon: Scale,
     assessmentType: "lia",
   },
+  { href: "/assessments/ai-impact", label: "AIIA", icon: BrainCircuit },
 ];
 
 const dpoNavItems: NavItem[] = [
@@ -95,6 +97,7 @@ const dpoNavItems: NavItem[] = [
     icon: Scale,
     assessmentType: "lia",
   },
+  { href: "/assessments/ai-impact", label: "AIIA", icon: BrainCircuit },
   { href: "/reports", label: "Summary", icon: Scale },
 ];
 
@@ -119,6 +122,7 @@ const userNavItems: NavItem[] = [
     icon: Scale,
     assessmentType: "lia",
   },
+  { href: "/assessments/ai-impact", label: "AIIA", icon: BrainCircuit },
 ];
 
 const faqNavItem: NavItem = {
@@ -904,6 +908,9 @@ function translateNavItemLabel(
   }
   if (item.href === "/assessments/lia") {
     return t("nav.lia");
+  }
+  if (item.href === "/assessments/ai-impact") {
+    return t("nav.aiImpact");
   }
   if (item.href === "/reports") {
     return t("nav.summary");

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, Download, FileText, Shield } from "lucide-react";
+import { AlertTriangle, BrainCircuit, CheckCircle2, Download, FileText, Shield } from "lucide-react";
 import { DeleteActionButton } from "@/components/delete-action-button";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -72,6 +72,13 @@ export default async function RopaResultPage({ params }: ResultPageProps) {
               confirmMessage={`${text.deleteRopaConfirm} "${activity.activityName}" ${text.deleteRopaConfirmSuffix}`}
               redirectTo="/ropa"
             />
+            <Link
+              href={`/assessments/ai-impact?ropaId=${activity.id}`}
+              className={buttonVariants({ variant: "secondary" })}
+            >
+              <BrainCircuit className="h-4 w-4" />
+              {text.createAiImpact}
+            </Link>
             <Link href="/ropa">
               <Button>View Registry Entry</Button>
             </Link>
@@ -276,6 +283,7 @@ const resultText = {
     fillDpiaInApp: "Complete DPIA in App",
     fillLiaInApp: "Complete LIA in App",
     fillTiaInApp: "Complete TIA in App",
+    createAiImpact: "Create AIIA",
   },
   id: {
     generateDepartmentExcel: "Generate Excel RoPA Departemen",
@@ -285,6 +293,7 @@ const resultText = {
     fillDpiaInApp: "Isi DPIA di Aplikasi",
     fillLiaInApp: "Isi LIA di Aplikasi",
     fillTiaInApp: "Isi TIA di Aplikasi",
+    createAiImpact: "Buat AIIA",
   },
 } as const satisfies Record<Locale, Record<string, string>>;
 

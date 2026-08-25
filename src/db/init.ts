@@ -4,7 +4,9 @@ import { db } from "@/db/client";
 import { ensureOfflineMigrations } from "@/db/offline-migrations";
 import {
   account,
+  aiImpactAssessments,
   assessments,
+  assessmentLinks,
   auditEvents,
   breachReports,
   departments,
@@ -84,6 +86,8 @@ export async function resetAndSeedDatabase() {
   await db.delete(faqReferences);
   await db.delete(faqCategories);
   await db.delete(riskRegisterEntries);
+  await db.delete(assessmentLinks);
+  await db.delete(aiImpactAssessments);
   await db.delete(assessments);
   await db.delete(ropaActivities);
   await db.delete(moduleColumnSettings);
