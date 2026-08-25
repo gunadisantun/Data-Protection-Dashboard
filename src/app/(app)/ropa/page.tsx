@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/form";
 import { Table, TBody, TD, TH, THead } from "@/components/ui/table";
-import { getDepartments, getRegistryStats, listRopa } from "@/lib/data";
+import { requireViewer, toAccessScope } from "@/lib/access";
+import { getDepartments, getModuleColumnSettings, listRopa } from "@/lib/data";
+import { getModuleColumnDefinitions } from "@/lib/module-columns";
 import { formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -21,12 +23,18 @@ type RegistryPageProps = {
 };
 
 export default async function RegistryPage({ searchParams }: RegistryPageProps) {
+  const viewer = await requireViewer();
+  const scope = toAccessScope(viewer);
   const filters = await searchParams;
-  const [rows, departments, stats] = await Promise.all([
-    listRopa(filters),
-    getDepartments(),
-    getRegistryStats(),
+  const [rows, departments, columnSettings] = await Promise.all([
+    listRopa(filters, scope),
+    getDepartments(scope),
+    getModuleColumnSettings("ropa"),
   ]);
+  const visibleColumns = getModuleColumnDefinitions(
+    "ropa",
+    columnSettings.customColumns,
+  ).filter((column) => columnSettings.visibleColumns.includes(column.key));
   const exportParams = new URLSearchParams();
   const selectedDepartment =
     filters.department && filters.department !== "all"
@@ -71,7 +79,7 @@ export default async function RegistryPage({ searchParams }: RegistryPageProps) 
             Records of Processing Activities for enterprise-wide compliance monitoring.
           </p>
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           <RopaImportButton />
           <Link
             href="/api/ropa/template"
@@ -90,18 +98,14 @@ export default async function RegistryPage({ searchParams }: RegistryPageProps) 
               ? `Download RoPA ${selectedDepartment.name}`
               : "Download RoPA per Departemen"}
           </Link>
-          <div className="grid grid-cols-2 gap-3">
-            <Counter label="Active" value={stats.active} tone="green" />
-            <Counter label="Drafts" value={stats.drafts} tone="yellow" />
-          </div>
         </div>
       </div>
 
       <Card>
-        <CardContent className="pt-5">
-          <form className="grid gap-4 md:grid-cols-[1fr_1fr_1fr_auto]">
+        <CardContent className="p-7 pt-7 sm:p-7 sm:pt-7">
+          <form className="grid gap-5 md:grid-cols-[1fr_1fr_1fr_auto] md:items-end">
             <div>
-              <label className="mb-1 block text-xs font-bold text-slate-900">
+              <label className="mb-2 block text-sm font-semibold text-slate-700">
                 Department
               </label>
               <Select name="department" defaultValue={filters.department ?? "all"}>
@@ -114,7 +118,7 @@ export default async function RegistryPage({ searchParams }: RegistryPageProps) 
               </Select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-bold text-slate-900">
+              <label className="mb-2 block text-sm font-semibold text-slate-700">
                 Risk Level
               </label>
               <Select name="risk" defaultValue={filters.risk ?? "all"}>
@@ -125,7 +129,7 @@ export default async function RegistryPage({ searchParams }: RegistryPageProps) 
               </Select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-bold text-slate-900">
+              <label className="mb-2 block text-sm font-semibold text-slate-700">
                 Status
               </label>
               <Select name="status" defaultValue={filters.status ?? "all"}>
@@ -135,8 +139,8 @@ export default async function RegistryPage({ searchParams }: RegistryPageProps) 
                 <option value="Archived">Archived</option>
               </Select>
             </div>
-            <div className="flex items-end">
-              <Button variant="dark" type="submit" className="w-full">
+            <div className="flex md:pb-0">
+              <Button variant="dark" type="submit" className="h-11 w-full px-5">
                 <Filter className="h-4 w-4" />
                 Apply Filters
               </Button>
@@ -149,55 +153,30 @@ export default async function RegistryPage({ searchParams }: RegistryPageProps) 
         <Table>
           <THead>
             <tr>
-              <TH>Activity Name</TH>
-              <TH>Department</TH>
-              <TH>Subject Category</TH>
-              <TH>Risk Level</TH>
-              <TH>Status</TH>
-              <TH>DPIA/TIA/LIA</TH>
-              <TH>Date Created</TH>
-              <TH>Actions</TH>
+              {visibleColumns.map((column) => (
+                <TH key={column.key}>{column.label}</TH>
+              ))}
             </tr>
           </THead>
           <TBody>
             {rows.length ? (
               rows.map((activity) => (
                 <tr key={activity.id}>
-                  <TD className="font-bold text-slate-950">{activity.activityName}</TD>
-                  <TD>{activity.departmentName}</TD>
-                  <TD>{activity.subjectCategories[0] ?? "General"}</TD>
-                  <TD>
-                    <RiskBadge risk={activity.riskAssessmentLevel} />
-                  </TD>
-                  <TD>
-                    <Badge tone={activity.status === "Active" ? "green" : "yellow"}>
-                      {activity.status}
-                    </Badge>
-                  </TD>
-                  <TD>
-                    <ObligationLinks assessments={activity.assessments} />
-                  </TD>
-                  <TD>{formatDate(activity.createdAt)}</TD>
-                  <TD>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Link
-                        href={`/ropa/${activity.id}/result`}
-                        className="font-bold text-blue-600"
-                      >
-                        Analyze
-                      </Link>
-                      <DeleteActionButton
-                        endpoint={`/api/ropa/${activity.id}`}
-                        label="Hapus"
-                        confirmMessage={`Hapus aktivitas RoPA "${activity.activityName}" beserta semua DPIA/TIA/LIA terkait?`}
-                      />
-                    </div>
-                  </TD>
+                  {visibleColumns.map((column) => (
+                    <RopaRegistryCell
+                      key={column.key}
+                      columnKey={column.key}
+                      activity={activity}
+                    />
+                  ))}
                 </tr>
               ))
             ) : (
               <tr>
-                <TD colSpan={8} className="py-8 text-center text-slate-500">
+                <TD
+                  colSpan={visibleColumns.length}
+                  className="py-8 text-center text-slate-500"
+                >
                   Belum ada aktivitas RoPA.
                 </TD>
               </tr>
@@ -248,16 +227,16 @@ export default async function RegistryPage({ searchParams }: RegistryPageProps) 
           </CardContent>
         </Card>
         <Card className="bg-blue-600 text-white">
-          <CardContent className="pt-5">
-            <div className="flex h-10 w-10 items-center justify-center rounded bg-white/15">
+          <CardContent className="p-7 pt-7 sm:p-7 sm:pt-7">
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-white/15">
               <ShieldCheck className="h-5 w-5" />
             </div>
-            <h2 className="mt-8 text-xl font-bold">Quick Analysis</h2>
-            <p className="mt-2 text-sm text-blue-50">
+            <h2 className="mt-10 text-xl font-bold">Quick Analysis</h2>
+            <p className="mt-3 text-sm leading-6 text-blue-50">
               Register one activity and the governance dashboard will generate
               DPIA, TIA, and LIA obligations automatically.
             </p>
-            <Link href="/ropa/new" className="mt-5 inline-block">
+            <Link href="/ropa/new" className="mt-6 inline-block">
               <Button variant="secondary">
                 <Plus className="h-4 w-4" />
                 Tambah Aktivitas
@@ -270,34 +249,118 @@ export default async function RegistryPage({ searchParams }: RegistryPageProps) 
   );
 }
 
-function Counter({
-  label,
-  value,
-  tone,
+function RopaRegistryCell({
+  columnKey,
+  activity,
 }: {
-  label: string;
-  value: number;
-  tone: "green" | "yellow";
+  columnKey: string;
+  activity: Awaited<ReturnType<typeof listRopa>>[number];
 }) {
-  return (
-    <Card className="min-w-32">
-      <CardContent className="flex items-center gap-3 pt-4">
-        <span
-          className={`flex h-9 w-9 items-center justify-center rounded ${
-            tone === "green" ? "bg-emerald-100" : "bg-amber-100"
-          }`}
-        >
-          <ShieldCheck className="h-5 w-5" />
+  if (columnKey === "activityName") {
+    return <TD className="font-bold text-slate-950">{activity.activityName}</TD>;
+  }
+
+  if (columnKey === "departmentName") {
+    return <TD>{activity.departmentName}</TD>;
+  }
+
+  if (columnKey === "legalBasis") {
+    return <TD>{activity.legalBasis}</TD>;
+  }
+
+  if (columnKey === "subjectCategory") {
+    return <TD>{activity.subjectCategories[0] ?? "General"}</TD>;
+  }
+
+  if (columnKey === "personalDataTypes") {
+    return (
+      <TD>
+        <span className="line-clamp-2">
+          {activity.personalDataTypes.slice(0, 3).join(", ") || "-"}
         </span>
-        <span>
-          <span className="block text-[11px] font-bold uppercase tracking-wide">
-            {label}
-          </span>
-          <span className="text-xl font-bold">{value}</span>
-        </span>
-      </CardContent>
-    </Card>
-  );
+      </TD>
+    );
+  }
+
+  if (columnKey === "recipients") {
+    return <TD>{activity.recipients || "-"}</TD>;
+  }
+
+  if (columnKey === "dataReceiverRole") {
+    return <TD>{activity.dataReceiverRole || "-"}</TD>;
+  }
+
+  if (columnKey === "riskLevel") {
+    return (
+      <TD>
+        <RiskBadge risk={activity.riskAssessmentLevel} />
+      </TD>
+    );
+  }
+
+  if (columnKey === "status") {
+    return (
+      <TD>
+        <Badge tone={activity.status === "Active" ? "green" : "yellow"}>
+          {activity.status}
+        </Badge>
+      </TD>
+    );
+  }
+
+  if (columnKey === "obligations") {
+    return (
+      <TD>
+        <ObligationLinks assessments={activity.assessments} />
+      </TD>
+    );
+  }
+
+  if (columnKey === "picName") {
+    return <TD>{activity.picName || "-"}</TD>;
+  }
+
+  if (columnKey === "crossBorder") {
+    return (
+      <TD>
+        {activity.isCrossBorder ? (
+          <Badge tone="yellow">{activity.destinationCountry || "Cross-border"}</Badge>
+        ) : (
+          <span className="text-slate-500">Tidak</span>
+        )}
+      </TD>
+    );
+  }
+
+  if (columnKey === "createdAt") {
+    return <TD>{formatDate(activity.createdAt)}</TD>;
+  }
+
+  if (columnKey === "actions") {
+    return (
+      <TD>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={`/ropa/${activity.id}/result`}
+            className="font-bold text-blue-600"
+          >
+            Analyze
+          </Link>
+          <DeleteActionButton
+            endpoint={`/api/ropa/${activity.id}`}
+            label="Hapus"
+            confirmMessage={`Hapus aktivitas RoPA "${activity.activityName}" beserta semua DPIA/TIA/LIA terkait?`}
+          />
+        </div>
+      </TD>
+    );
+  }
+
+  if (columnKey.startsWith("custom_")) {
+    return <TD className="text-slate-400">-</TD>;
+  }
+
+  return <TD>-</TD>;
 }
 
 function RiskBadge({ risk }: { risk: string }) {

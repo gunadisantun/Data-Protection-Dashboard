@@ -2,10 +2,16 @@
   "name": "privacyvault-app",
   "version": "0.1.0",
   "private": true,
+  "main": "electron/main.js",
   "scripts": {
     "dev": "node ./node_modules/next/dist/bin/next dev",
     "build": "node ./node_modules/next/dist/bin/next build",
     "start": "node ./node_modules/next/dist/bin/next start",
+    "desktop:dev": "concurrently \"cross-env PRIVACY_BRO_OFFLINE=1 PRIVACY_BRO_DATA_DIR=.privacy-bro-offline node ./node_modules/next/dist/bin/next dev --hostname 127.0.0.1 --port 3000\" \"wait-on http://127.0.0.1:3000/login && cross-env ELECTRON_START_URL=http://127.0.0.1:3000 electron .\"",
+    "desktop:prepare": "npm run build && node scripts/prepare-electron.mjs",
+    "desktop:portable": "npm run desktop:prepare && node scripts/build-windows-portable.mjs",
+    "desktop:pack": "npm run desktop:prepare && electron-builder --win --dir",
+    "desktop:dist": "npm run desktop:prepare && electron-builder --win nsis",
     "lint": "node ./node_modules/eslint/bin/eslint.js",
     "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit",
     "test": "node ./node_modules/vitest/vitest.mjs run",
@@ -14,19 +20,24 @@
     "db:seed": "node ./node_modules/tsx/dist/cli.mjs src/db/seed.ts"
   },
   "dependencies": {
-    "@carrot-kpi/switzer-font": "^0.1.0",
-    "@supabase/ssr": "^0.10.2",
-    "@supabase/supabase-js": "^2.105.3",
-    "better-auth": "^1.6.9",
+    "@electric-sql/pglite": "^0.5.4",
+    "@pdf-lib/fontkit": "^1.1.1",
+    "@supabase/supabase-js": "^2.106.1",
+    "better-auth": "^1.6.11",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
     "exceljs": "^4.4.0",
     "lucide-react": "^1.14.0",
-    "next": "16.2.4",
+    "mammoth": "^1.12.0",
+    "next": "^16.2.6",
+    "pdf-lib": "^1.17.1",
+    "pdf-parse": "^2.4.5",
     "postgres": "^3.4.9",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "react-simple-maps": "^3.0.0",
+    "recharts": "^3.8.1",
     "tailwind-merge": "^3.5.0",
     "zod": "^4.4.3"
   },
@@ -35,14 +46,61 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/react-simple-maps": "^3.0.6",
+    "concurrently": "^10.0.3",
+    "cross-env": "^10.1.0",
     "dotenv": "^17.4.2",
     "drizzle-kit": "^0.31.10",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.27.7",
     "eslint": "^9",
-    "eslint-config-next": "16.2.4",
+    "eslint-config-next": "^16.2.6",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
     "typescript": "^5",
-    "vercel": "^53.1.1",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.5",
+    "wait-on": "^9.1.0"
+  },
+  "overrides": {
+    "@esbuild-kit/core-utils": {
+      "esbuild": "^0.25.12"
+    },
+    "postcss": "^8.5.14",
+    "uuid": "^11.1.1",
+    "ws": "^8.21.0"
+  },
+  "build": {
+    "appId": "com.privacybro.desktop",
+    "productName": "Privacy Bro",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "electron/**/*",
+      ".next/standalone/**/*",
+      ".next/static/**/*",
+      "public/**/*",
+      "drizzle/**/*",
+      "templates/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      ".next/standalone/**/*",
+      "drizzle/**/*",
+      "templates/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "Privacy-Bro-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   }
 }

@@ -1,6 +1,7 @@
 import type { Workbook, Worksheet } from "exceljs";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { assessments, departments, ropaActivities } from "@/db/schema";
 import type { DpiaDraft } from "@/lib/dpia-draft";
 import type { LiaDraft } from "@/lib/lia-draft";
@@ -16,23 +17,27 @@ type AssessmentWithRopa = typeof assessments.$inferSelect & {
   ropa: typeof ropaActivities.$inferSelect;
 };
 
-const templatePaths = {
-  ropa:
-    process.env.ROPA_EXCEL_TEMPLATE_PATH ??
-    path.join(process.cwd(), "templates", "ropa-template.xlsx"),
-  dpia:
-    process.env.DPIA_EXCEL_TEMPLATE_PATH ??
-    path.join(process.cwd(), "templates", "dpia.xlsx"),
-  lia:
-    process.env.LIA_EXCEL_TEMPLATE_PATH ??
-    path.join(process.cwd(), "templates", "lia.xlsx"),
-  tia:
-    process.env.TIA_EXCEL_TEMPLATE_PATH ??
-    path.join(process.cwd(), "templates", "tia.xlsx"),
+const defaultTemplatePaths = {
+  ropa: fileURLToPath(new URL("../../templates/ropa-template.xlsx", import.meta.url)),
+  dpia: fileURLToPath(new URL("../../templates/dpia.xlsx", import.meta.url)),
+  lia: fileURLToPath(new URL("../../templates/lia.xlsx", import.meta.url)),
+  tia: fileURLToPath(new URL("../../templates/tia.xlsx", import.meta.url)),
 } as const;
 
-export function getExcelTemplatePath(kind: keyof typeof templatePaths) {
-  return templatePaths[kind];
+type ExcelTemplateKind = keyof typeof defaultTemplatePaths;
+
+export function getExcelTemplatePath(kind: ExcelTemplateKind) {
+  const configuredPath = {
+    ropa: process.env.ROPA_EXCEL_TEMPLATE_PATH,
+    dpia: process.env.DPIA_EXCEL_TEMPLATE_PATH,
+    lia: process.env.LIA_EXCEL_TEMPLATE_PATH,
+    tia: process.env.TIA_EXCEL_TEMPLATE_PATH,
+  }[kind];
+
+  return (
+    configuredPath ??
+    defaultTemplatePaths[kind]
+  );
 }
 
 export async function buildRopaWorkbook(activity: RopaWithDepartment) {
@@ -252,14 +257,15 @@ export function excelFileName(prefix: string, name: string) {
   return `${prefix} - ${clean || "Export"}.xlsx`;
 }
 
-async function loadTemplate(kind: keyof typeof templatePaths) {
-  const templatePath = templatePaths[kind];
+async function loadTemplate(kind: ExcelTemplateKind) {
+  const templatePath = getExcelTemplatePath(kind);
 
   if (!existsSync(templatePath)) {
     throw new Error(`Template Excel tidak ditemukan: ${templatePath}`);
   }
 
-  const ExcelJS = await import("exceljs");
+  const ExcelJSModule = await import("exceljs");
+  const ExcelJS = ExcelJSModule.default ?? ExcelJSModule;
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.readFile(path.normalize(templatePath));
   return workbook;

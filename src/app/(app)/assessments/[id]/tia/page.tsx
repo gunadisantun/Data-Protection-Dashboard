@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { TiaWorkspace } from "@/components/tia-workspace";
+import { requireViewer, toAccessScope } from "@/lib/access";
 import { getAssessmentById } from "@/lib/data";
 import { buildTiaDraft, mergeSavedTiaDraft } from "@/lib/tia-draft";
 
@@ -10,8 +11,10 @@ type TiaPageProps = {
 };
 
 export default async function TiaPage({ params }: TiaPageProps) {
+  const viewer = await requireViewer();
+
   const { id } = await params;
-  const assessment = await getAssessmentById(id);
+  const assessment = await getAssessmentById(id, toAccessScope(viewer));
 
   if (!assessment || assessment.taskType !== "TIA") {
     notFound();

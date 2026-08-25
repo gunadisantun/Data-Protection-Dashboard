@@ -4,6 +4,7 @@ import { DeleteActionButton } from "@/components/delete-action-button";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { requireViewer, toAccessScope } from "@/lib/access";
 import { getRopaById } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
@@ -13,8 +14,9 @@ type ResultPageProps = {
 };
 
 export default async function RopaResultPage({ params }: ResultPageProps) {
+  const viewer = await requireViewer();
   const { id } = await params;
-  const activity = await getRopaById(id);
+  const activity = await getRopaById(id, toAccessScope(viewer));
 
   if (!activity) {
     return (
@@ -34,6 +36,7 @@ export default async function RopaResultPage({ params }: ResultPageProps) {
   const orderedAssessments = [...activity.assessments].sort(
     (a, b) => assessmentOrder(a.taskType) - assessmentOrder(b.taskType),
   );
+  const activityDestinationCountries = parseDestinationCountries(activity.destinationCountry);
 
   return (
     <div className="mx-auto max-w-[1180px] space-y-7">
@@ -99,16 +102,6 @@ export default async function RopaResultPage({ params }: ResultPageProps) {
             />
             <SummaryBlock label="Department" value={activity.department.name} />
             <SummaryBlock label="PIC" value={activity.picName} />
-            <SummaryBlock
-              label="Initial Risk Assessment"
-              value={`${activity.riskAssessmentLevel} - likelihood ${activity.riskLikelihood}, impact ${activity.riskImpact}, volume ${activity.volumeLevel}`}
-              danger={activity.riskAssessmentLevel === "High"}
-            />
-            <SummaryBlock
-              label="Residual Risk"
-              value={activity.residualRiskLevel || activity.riskAssessmentLevel}
-              danger={activity.residualRiskLevel === "High"}
-            />
           </CardContent>
         </Card>
 
@@ -122,7 +115,18 @@ export default async function RopaResultPage({ params }: ResultPageProps) {
           <CardContent className="space-y-4">
             {orderedAssessments.length ? (
               orderedAssessments.map((assessment) => (
-                <ObligationCard key={assessment.id} assessment={assessment} />
+                <ObligationCard
+                  key={assessment.id}
+                  assessment={assessment}
+                  destinationCountries={
+                    assessment.taskType === "TIA"
+                      ? getAssessmentDestinationCountries(
+                          assessment.notes,
+                          activityDestinationCountries,
+                        )
+                      : activityDestinationCountries
+                  }
+                />
               ))
             ) : (
               <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-5">
@@ -137,21 +141,6 @@ export default async function RopaResultPage({ params }: ResultPageProps) {
                 </p>
               </div>
             )}
-
-            <div className="flex items-center justify-between rounded-lg bg-emerald-50 p-4 text-sm">
-              <div className="flex items-center gap-3">
-                <span className="flex h-8 w-8 items-center justify-center rounded bg-white text-emerald-600">
-                  <Shield className="h-4 w-4" />
-                </span>
-                <div>
-                  <div className="font-bold text-slate-950">Data Retention Policy</div>
-                  <div className="text-slate-500">
-                    Compliant with configured statutory retention period.
-                  </div>
-                </div>
-              </div>
-              <Badge tone="green">Compliant</Badge>
-            </div>
           </CardContent>
         </Card>
       </div>
@@ -169,7 +158,7 @@ function SummaryBlock({
   danger,
 }: {
   label: string;
-  value: string;
+  value: React.ReactNode;
   danger?: boolean;
 }) {
   return (
@@ -177,7 +166,7 @@ function SummaryBlock({
       <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
         {label}
       </div>
-      <div className={`mt-1 text-sm font-semibold ${danger ? "text-red-600" : ""}`}>
+      <div className={`mt-1 text-sm font-semibold ${danger ? "text-red-600" : "text-slate-900"}`}>
         {value}
       </div>
     </div>
@@ -186,6 +175,7 @@ function SummaryBlock({
 
 function ObligationCard({
   assessment,
+  destinationCountries,
 }: {
   assessment: {
     id: string;
@@ -193,31 +183,48 @@ function ObligationCard({
     severity: "Required" | "Critical";
     title: string;
     reason: string;
+    status: "Todo" | "In Progress" | "Done";
+    notes: string;
   };
+  destinationCountries: string[];
 }) {
-  const critical = assessment.severity === "Critical";
-  const palette = critical
+  const palette = assessment.taskType === "DPIA"
     ? "border-red-100 bg-red-50 text-red-900"
     : assessment.taskType === "TIA"
       ? "border-amber-100 bg-amber-50 text-amber-900"
       : "border-blue-100 bg-blue-50 text-blue-900";
 
+  const iconTone = assessment.taskType === "DPIA"
+    ? "bg-red-500 text-white"
+    : assessment.taskType === "TIA"
+      ? "bg-amber-500 text-white"
+      : "bg-blue-600 text-white";
+
+  const statusLabel = toAssessmentProgress(assessment.status, assessment.notes);
+  const statusTone = statusLabel === "Completed"
+    ? "green"
+    : statusLabel === "In Progress"
+      ? "blue"
+      : "slate";
+  const display = getObligationDisplayCopy(assessment.taskType, destinationCountries);
+
   return (
     <div className={`rounded-lg border p-5 ${palette}`}>
       <div className="flex items-start gap-4">
-        <span
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded ${
-            critical ? "bg-red-500 text-white" : "bg-amber-500 text-white"
-          }`}
-        >
+        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded ${iconTone}`}>
           <AlertTriangle className="h-5 w-5" />
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-3">
-            <h2 className="text-lg font-bold">{assessment.title}</h2>
-            <Badge tone={critical ? "red" : "yellow"}>{assessment.severity}</Badge>
+            <h2 className="text-lg font-bold">{display.title}</h2>
+            <Badge
+              tone={assessment.taskType === "DPIA" ? "red" : assessment.taskType === "TIA" ? "yellow" : "blue"}
+            >
+              Required
+            </Badge>
+            <Badge tone={statusTone}>{statusLabel}</Badge>
           </div>
-          <p className="mt-2 text-sm leading-6">{assessment.reason}</p>
+          <p className="mt-2 text-sm leading-6">{display.description}</p>
           <div className="mt-4 flex flex-wrap gap-3">
             {assessment.taskType === "DPIA" ? (
               <Link
@@ -241,16 +248,106 @@ function ObligationCard({
                 Isi TIA di Aplikasi
               </Link>
             ) : (
-              <Button variant={critical ? "danger" : "warning"} size="sm">
+              <Button variant="warning" size="sm">
                 Start {assessment.taskType} Now
               </Button>
             )}
-            <Button variant="ghost" size="sm">
-              View Policy Reference
-            </Button>
           </div>
         </div>
       </div>
     </div>
   );
+}
+
+function toAssessmentProgress(status: "Todo" | "In Progress" | "Done", notes: string) {
+  if (status === "Done") {
+    return "Completed";
+  }
+
+  if (status === "In Progress" || hasUserAssessmentDraft(notes)) {
+    return "In Progress";
+  }
+
+  return "Not Started";
+}
+
+function hasUserAssessmentDraft(notes: string) {
+  if (!notes.trim()) {
+    return false;
+  }
+
+  try {
+    const parsed = JSON.parse(notes) as { kind?: string };
+    return parsed.kind !== "privacyvault.tiaTransfer.v1";
+  } catch {
+    return true;
+  }
+}
+
+function parseDestinationCountries(value: string) {
+  return [...new Set(
+    value
+      .split(/[\n,;|]+/)
+      .map((item) => item.replace(/^Pengiriman\s+\d+\s*:\s*/i, "").trim())
+      .filter(Boolean),
+  )];
+}
+
+function getAssessmentDestinationCountries(notes: string, fallback: string[]) {
+  if (!notes.trim()) {
+    return fallback;
+  }
+
+  try {
+    const parsed = JSON.parse(notes) as {
+      kind?: string;
+      transfer?: { destinationCountry?: string };
+      draft?: { transfer?: { destinationCountry?: string } };
+    };
+    const destinationCountry =
+      parsed.kind === "privacyvault.tiaTransfer.v1"
+        ? parsed.transfer?.destinationCountry
+        : parsed.kind === "privacyvault.tiaDraft.v1"
+          ? parsed.draft?.transfer?.destinationCountry
+          : "";
+
+    return destinationCountry?.trim() ? [destinationCountry.trim()] : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function getTiaDescription(destinationCountries: string[]) {
+  if (destinationCountries.length === 0) {
+    return "Cross-border transfer was identified. Review transfer impact, destination risk, and required safeguards.";
+  }
+
+  if (destinationCountries.length === 1) {
+    return `Cross-border transfer to ${destinationCountries[0]} was identified. Review transfer impact, destination risk, and required safeguards.`;
+  }
+
+  return "Cross-border transfer to multiple countries was identified. Review transfer impact, destination risk, and required safeguards.";
+}
+
+function getObligationDisplayCopy(taskType: "DPIA" | "TIA" | "LIA", destinationCountries: string[]) {
+  if (taskType === "DPIA") {
+    return {
+      title: "DPIA Required",
+      description:
+        "This activity meets a high-risk processing criterion under Article 34(2) of the PDP Law: Processing of Specific Personal Data.",
+    };
+  }
+
+  if (taskType === "TIA") {
+    return {
+      title: "TIA Review Required",
+      description: getTiaDescription(destinationCountries),
+    };
+  }
+
+  return {
+    title: "LIA Required",
+    description:
+      "Legitimate Interest was selected as the lawful basis. A balancing assessment must be completed before relying on this basis.",
+  };
 }

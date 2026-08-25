@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getViewerFromRequest, toAccessScope } from "@/lib/access";
 import {
   buildRopaWorkbook,
   excelFileName,
@@ -11,9 +12,15 @@ type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
+  const viewer = await getViewerFromRequest(request);
+
+  if (!viewer) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await context.params;
-  const activity = await getRopaById(id);
+  const activity = await getRopaById(id, toAccessScope(viewer));
 
   if (!activity) {
     return NextResponse.json({ error: "RoPA not found" }, { status: 404 });

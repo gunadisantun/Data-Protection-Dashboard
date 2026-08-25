@@ -1,79 +1,65 @@
-import { Database, KeyRound, Users } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getCurrentUser, getDepartments } from "@/lib/data";
+import { ShieldCheck } from "lucide-react";
+import { AccountSettingsPanel } from "@/components/account-settings-panel";
+import { requireViewer, toAccessScope } from "@/lib/access";
+import {
+  getAllModuleColumnSettings,
+  getGovernanceSettings,
+  listManagedUsers,
+} from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const [user, departments] = await Promise.all([
-    getCurrentUser(),
-    getDepartments(),
+  const viewer = await requireViewer();
+
+  const scope = toAccessScope(viewer);
+  const [users, governanceSettings, columnSettings] = await Promise.all([
+    listManagedUsers(scope),
+    viewer.role === "DPO"
+      ? getGovernanceSettings(scope)
+      : Promise.resolve(null),
+    getAllModuleColumnSettings(),
   ]);
 
   return (
-    <div className="mx-auto max-w-[900px] space-y-6">
+    <div className="mx-auto max-w-[1180px] space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Settings</h1>
+        <h1 className="text-3xl font-bold">
+          {viewer.role === "MasterAdmin"
+            ? "Account Management"
+            : viewer.role === "DPO"
+              ? "Legal & Account Settings"
+              : "My Account Settings"}
+        </h1>
         <p className="mt-1 text-sm text-slate-600">
-          Development controls and role-aware configuration for the MVP.
+          {viewer.role === "MasterAdmin"
+            ? "Kelola akun, role, dan departemen."
+            : viewer.role === "DPO"
+              ? "Kelola governance contacts dan pengaturan PIC untuk akun DPO."
+              : "Atur PIC Name dan PIC Email untuk akun Anda."}
         </p>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <KeyRound className="h-5 w-5 text-blue-600" />
-            Authentication
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm text-slate-600">
-          <p>
-            Better Auth is mounted at <code>/api/auth/[...all]</code>. The current
-            development session is seeded as{" "}
-            <strong className="text-slate-950">{user?.fullName}</strong> with role{" "}
-            <strong className="text-slate-950">{user?.role}</strong>.
-          </p>
-          <p>
-            Seed users include Admin and PIC roles so access control can be expanded
-            without changing the data model.
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Database className="h-5 w-5 text-blue-600" />
-            Supabase Postgres + Drizzle
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm text-slate-600">
-          Data utama tersimpan di Supabase Postgres. Use <code>npm run db:push</code>{" "}
-          untuk sinkronisasi schema dan <code>npm run db:seed</code> untuk refresh
-          master department/user development.
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5 text-blue-600" />
-            Departments
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3 md:grid-cols-2">
-            {departments.map((department) => (
-              <div
-                key={department.id}
-                className="rounded border border-slate-100 p-3 text-sm font-semibold"
-              >
-                {department.name}
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-800">
+        <div className="flex items-center gap-2 font-semibold">
+          <ShieldCheck className="h-4 w-4" />
+          Role aktif:{" "}
+          {viewer.role === "MasterAdmin"
+            ? "Master Admin"
+            : viewer.role === "DPO"
+              ? "DPO"
+              : "User"}
+        </div>
+      </div>
+      <AccountSettingsPanel
+        viewerRole={viewer.role}
+        initialUsers={users}
+        initialGovernanceSettings={{
+          controllerProcessorContacts:
+            governanceSettings?.controllerProcessorContacts ?? "",
+          dpoContact: governanceSettings?.dpoContact ?? "",
+        }}
+        initialColumnSettings={columnSettings}
+      />
     </div>
   );
 }

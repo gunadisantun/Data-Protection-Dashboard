@@ -19,6 +19,10 @@
 
 # production
 /build
+/dist
+/dist-electron
+/dist-windows
+/outputs
 
 # misc
 .DS_Store
@@ -37,6 +41,7 @@ yarn-error.log*
 # local database artifacts
 /data/*.sqlite
 /data/*.sqlite-*
+/.privacy-bro-offline*
 
 # vercel
 .vercel

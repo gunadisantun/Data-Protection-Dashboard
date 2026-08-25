@@ -1,7 +1,16 @@
 import { AssessmentTypeDashboard } from "@/components/assessment-type-dashboard";
+import { requireViewer, toAccessScope } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
-export default function TiaSummaryPage() {
-  return <AssessmentTypeDashboard type="TIA" />;
+export default async function TiaSummaryPage() {
+  const viewer = await requireViewer();
+
+  return (
+    <AssessmentTypeDashboard
+      type="TIA"
+      scope={toAccessScope(viewer)}
+      canDeleteTasks={viewer.role !== "User"}
+    />
+  );
 }

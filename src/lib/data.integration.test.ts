@@ -7,7 +7,7 @@ const describeWithDatabase = testDatabaseUrl ? describe : describe.skip;
 let createRopa: typeof import("@/lib/data").createRopa;
 let getRopaById: typeof import("@/lib/data").getRopaById;
 let resetAndSeedDatabase: typeof import("@/db/init").resetAndSeedDatabase;
-let queryClient: typeof import("@/db/client").queryClient;
+let closeQueryClient: typeof import("@/db/client").closeQueryClient;
 
 describeWithDatabase("createRopa", () => {
   beforeAll(async () => {
@@ -15,12 +15,12 @@ describeWithDatabase("createRopa", () => {
     process.env.DIRECT_URL = testDatabaseUrl;
     ({ resetAndSeedDatabase } = await import("@/db/init"));
     ({ createRopa, getRopaById } = await import("@/lib/data"));
-    ({ queryClient } = await import("@/db/client"));
+    ({ closeQueryClient } = await import("@/db/client"));
     await resetAndSeedDatabase();
   });
 
   afterAll(async () => {
-    await queryClient?.end();
+    await closeQueryClient?.();
   });
 
   it("persists a RoPA activity and generated obligations atomically", async () => {
@@ -36,6 +36,7 @@ describeWithDatabase("createRopa", () => {
       dpoContact: "dpo@privacyvault.local",
       legalBasis: "Legitimate Interest",
       processingPurpose: "Marketing and sales analytics",
+      hasTransfer: true,
       transferPurpose: "Campaign analytics and reporting to external processor",
       sourceMechanism: "CRM and campaign form",
       subjectCategories: ["Customers"],
@@ -47,6 +48,24 @@ describeWithDatabase("createRopa", () => {
       destinationCountry: "USA",
       exportProtectionMechanism: "Standard contractual clauses",
       transferMechanism: "Secure API",
+      transferItems: [
+        {
+          transferPurpose: "Campaign analytics and reporting to external processor",
+          recipients: "Analytics platform",
+          dataReceiverRole: "Processor/Vendor",
+          isCrossBorder: true,
+          destinationCountry: "USA",
+          exportProtectionMechanism: "Standard contractual clauses",
+        },
+        {
+          transferPurpose: "Campaign dashboard hosting and reporting",
+          recipients: "Regional dashboard provider",
+          dataReceiverRole: "Processor/Vendor",
+          isCrossBorder: true,
+          destinationCountry: "Singapore",
+          exportProtectionMechanism: "DPA and contractual safeguards",
+        },
+      ],
       storageLocation: "Regional SaaS platform",
       retentionPeriod: "7 years",
       technicalMeasures: "Encryption and role-based access",
@@ -62,7 +81,7 @@ describeWithDatabase("createRopa", () => {
       previousProcess: "Customer purchase",
       nextProcess: "Campaign reporting",
       status: "Active",
-      userId: "user-pic-marketing",
+      userId: "user-marketing",
     };
 
     const result = await createRopa(payload);
@@ -70,12 +89,19 @@ describeWithDatabase("createRopa", () => {
 
     expect(result.triggers.map((trigger) => trigger.type)).toEqual([
       "LIA",
-      "TIA",
       "DPIA",
+      "TIA",
+      "TIA",
     ]);
     expect(stored?.activityName).toBe(payload.activityName);
     expect(stored?.highRiskCategories).toEqual(["new-technology"]);
     expect(stored?.riskRegisterReference).toBe("RR-PRIV-2026-014");
-    expect(stored?.assessments).toHaveLength(3);
+    expect(stored?.assessments).toHaveLength(4);
+    expect(
+      stored?.assessments
+        .filter((assessment) => assessment.taskType === "TIA")
+        .map((assessment) => assessment.title)
+        .sort(),
+    ).toEqual(["TIA Review Required - Singapore", "TIA Review Required - USA"]);
   });
 });

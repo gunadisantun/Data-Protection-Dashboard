@@ -4,10 +4,10 @@ config({ path: ".env.local" });
 
 async function main() {
   const { resetAndSeedDatabase } = await import("@/db/init");
-  const { queryClient } = await import("@/db/client");
+  const { closeQueryClient } = await import("@/db/client");
   await resetAndSeedDatabase();
   console.log("PrivacyVault seed data refreshed.");
-  await queryClient.end();
+  await closeQueryClient();
 }
 
 main().catch((error) => {

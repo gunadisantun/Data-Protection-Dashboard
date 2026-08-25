@@ -1,17 +1,25 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { CalendarClock, CheckCircle2 } from "lucide-react";
 import { DeleteActionButton } from "@/components/delete-action-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TBody, TD, TH, THead } from "@/components/ui/table";
+import { requireViewer, toAccessScope } from "@/lib/access";
 import { listTasks } from "@/lib/data";
 import { formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 export default async function TaskBoardPage() {
-  const tasks = await listTasks();
+  const viewer = await requireViewer();
+
+  if (viewer.role === "User") {
+    redirect("/dashboard");
+  }
+
+  const tasks = await listTasks(undefined, { scope: toAccessScope(viewer) });
   const done = tasks.filter((task) => task.status === "Done").length;
   const open = tasks.length - done;
   const dueThisWeek = tasks.filter((task) => task.status !== "Done").length;

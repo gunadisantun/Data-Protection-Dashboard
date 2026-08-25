@@ -8,13 +8,20 @@ import {
   Circle,
   Lightbulb,
   Loader2,
-  Mail,
-  User,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { CheckboxRow, Input, Label, Select, Textarea } from "@/components/ui/form";
+import {
+  CheckboxRow,
+  defaultFieldHelp,
+  Input,
+  Label,
+  Select,
+  Textarea,
+} from "@/components/ui/form";
 import {
   countryReferences,
   lookupCountryReference,
@@ -30,10 +37,7 @@ type WizardData = {
   activityName: string;
   processDescription: string;
   departmentId: string;
-  picName: string;
-  picEmail: string;
-  controllerProcessorContacts: string;
-  dpoContact: string;
+  hasTransfer: boolean;
   legalBasis: string;
   processingPurpose: string;
   transferPurpose: string;
@@ -63,9 +67,19 @@ type WizardData = {
   riskMitigationPlan: string;
   volumeLevel: string;
   usesAutomatedDecisionMaking: boolean;
-  dataFlowMapping: string;
   previousProcess: string;
   nextProcess: string;
+  transferItems: TransferItem[];
+};
+
+type TransferItem = {
+  id: string;
+  transferPurpose: string;
+  recipients: string;
+  dataReceiverRole: string;
+  isCrossBorder: boolean;
+  destinationCountry: string;
+  exportProtectionMechanism: string;
 };
 
 const steps = [
@@ -121,14 +135,26 @@ const dataSubjectRightOptions = [
   "Hak Interoperabilitas (Pasal 13)",
 ];
 
+function createTransferItem(): TransferItem {
+  return {
+    id:
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `transfer-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    transferPurpose: "",
+    recipients: "",
+    dataReceiverRole: "",
+    isCrossBorder: false,
+    destinationCountry: "",
+    exportProtectionMechanism: "",
+  };
+}
+
 const initialData: WizardData = {
   activityName: "",
   processDescription: "",
   departmentId: "",
-  picName: "",
-  picEmail: "",
-  controllerProcessorContacts: "",
-  dpoContact: "",
+  hasTransfer: false,
   legalBasis: "Consent",
   processingPurpose: "",
   transferPurpose: "",
@@ -141,7 +167,7 @@ const initialData: WizardData = {
   isCrossBorder: false,
   destinationCountry: "",
   exportProtectionMechanism: "",
-  transferMechanism: "Secure API",
+  transferMechanism: "",
   storageLocation: "",
   retentionPeriod: "7 years",
   technicalMeasures: "",
@@ -161,15 +187,37 @@ const initialData: WizardData = {
   riskMitigationPlan: "",
   volumeLevel: "Small",
   usesAutomatedDecisionMaking: false,
-  dataFlowMapping: "",
   previousProcess: "",
   nextProcess: "",
+  transferItems: [],
 };
 
-export function RopaWizard({ departments }: { departments: Department[] }) {
+type RopaWizardProps = {
+  departments: Department[];
+  defaultDepartmentId?: string;
+  lockDepartment?: boolean;
+  allowFreeDepartment?: boolean;
+  governanceSettings?: {
+    controllerProcessorContacts: string;
+    dpoContact: string;
+  } | null;
+  activePicName?: string;
+};
+
+export function RopaWizard({
+  departments,
+  defaultDepartmentId = "",
+  lockDepartment = false,
+  allowFreeDepartment = false,
+  governanceSettings = null,
+  activePicName = "",
+}: RopaWizardProps) {
   const router = useRouter();
   const [step, setStep] = useState(0);
-  const [data, setData] = useState<WizardData>(initialData);
+  const [data, setData] = useState<WizardData>(() => ({
+    ...initialData,
+    departmentId: defaultDepartmentId || initialData.departmentId,
+  }));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -180,28 +228,39 @@ export function RopaWizard({ departments }: { departments: Department[] }) {
         label: "Select the correct business unit to assign accountability.",
       },
       {
-        done: Boolean(data.picName && data.picEmail && data.dpoContact),
-        label: "Ensure PIC dan kontak DPO tersedia untuk compliance inquiries.",
+        done: Boolean(
+          governanceSettings?.controllerProcessorContacts?.trim() &&
+            governanceSettings?.dpoContact?.trim(),
+        ),
+        label:
+          "Pastikan kontak Pengendali/Prosesor dan DPO sudah diatur pada menu Account/Settings.",
       },
       {
         done: Boolean(
-          data.controllerProcessorContacts &&
-            data.legalBasis &&
-            data.processingPurpose &&
-            data.transferPurpose,
+          data.legalBasis &&
+          data.processingPurpose &&
+          data.sourceMechanism &&
+          (!data.hasTransfer ||
+            data.transferItems.some(
+              (item) =>
+                item.transferPurpose.trim().length >= 5 &&
+                item.recipients.trim().length >= 3 &&
+                item.dataReceiverRole.trim(),
+            )),
         ),
-        label: "Pastikan dasar, tujuan pemrosesan, tujuan transfer, dan pihak terkait tercatat.",
+        label:
+          "Pastikan dasar, tujuan pemrosesan, sumber data, dan parameter transfer tercatat.",
       },
     ],
     [
-      data.controllerProcessorContacts,
       data.departmentId,
-      data.dpoContact,
+      data.hasTransfer,
       data.legalBasis,
-      data.picEmail,
-      data.picName,
       data.processingPurpose,
-      data.transferPurpose,
+      data.sourceMechanism,
+      data.transferItems,
+      governanceSettings?.controllerProcessorContacts,
+      governanceSettings?.dpoContact,
     ],
   );
 
@@ -234,16 +293,31 @@ export function RopaWizard({ departments }: { departments: Department[] }) {
       "large-scale-processing",
     );
     const derivedRiskLevel = hasHighRiskCategory ? "High" : "Low";
+    const transferItems = data.hasTransfer ? normalizeTransferItems(data.transferItems) : [];
+    const hasCrossBorderTransfer = transferItems.some((item) => item.isCrossBorder);
+    const transferSummary = summarizeTransferItems(transferItems);
 
     const response = await fetch("/api/ropa", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...data,
-        destinationCountry: data.isCrossBorder ? data.destinationCountry : "",
-        exportProtectionMechanism: data.isCrossBorder
-          ? data.exportProtectionMechanism
+        hasTransfer: data.hasTransfer,
+        transferPurpose: data.hasTransfer ? transferSummary.transferPurpose : "",
+        recipients: data.hasTransfer ? transferSummary.recipients : "",
+        processorContractLink: data.hasTransfer ? data.processorContractLink : "",
+        dataReceiverRole: data.hasTransfer ? transferSummary.dataReceiverRole : "",
+        transferMechanism: data.hasTransfer ? transferSummary.transferMechanism : "",
+        isCrossBorder: data.hasTransfer ? hasCrossBorderTransfer : false,
+        destinationCountry: data.hasTransfer && hasCrossBorderTransfer
+          ? transferSummary.destinationCountry
           : "",
+        exportProtectionMechanism: data.hasTransfer && hasCrossBorderTransfer
+          ? transferSummary.exportProtectionMechanism
+          : "",
+        controllerProcessorContacts:
+          governanceSettings?.controllerProcessorContacts ?? "",
+        dpoContact: governanceSettings?.dpoContact ?? "",
         dataSubjectRights: data.dataSubjectRights.join("; "),
         legalBasis: data.legalBasis,
         riskAssessmentLevel: derivedRiskLevel,
@@ -252,6 +326,7 @@ export function RopaWizard({ departments }: { departments: Department[] }) {
         riskImpact: hasHighRiskCategory ? "High" : "Low",
         volumeLevel: isLargeScaleHighRisk ? "Large" : "Small",
         usesAutomatedDecisionMaking: isAutomatedHighRisk,
+        dataFlowMapping: "",
         status: "Active",
       }),
     });
@@ -270,12 +345,12 @@ export function RopaWizard({ departments }: { departments: Department[] }) {
     <div className="mx-auto grid max-w-[1180px] gap-7 xl:grid-cols-[1fr_236px]">
       <section className="space-y-5">
         <Card>
-          <CardContent className="pt-5">
-            <div className="flex items-center justify-between gap-3 overflow-x-auto">
+          <CardContent className="p-5 sm:p-6 sm:pt-6">
+            <div className="flex items-center justify-between gap-4 overflow-x-auto pb-1">
               {steps.map((label, index) => (
                 <button
                   key={label}
-                  className="flex min-w-24 flex-col items-center gap-2 text-sm"
+                  className="flex min-w-24 flex-col items-center gap-3 rounded-xl px-2 py-1 text-sm"
                   onClick={() => setStep(index)}
                 >
                   <span
@@ -317,6 +392,10 @@ export function RopaWizard({ departments }: { departments: Department[] }) {
                 data={data}
                 departments={departments}
                 update={update}
+                lockDepartment={lockDepartment}
+                allowFreeDepartment={allowFreeDepartment}
+                governanceSettings={governanceSettings}
+                activePicName={activePicName}
               />
             ) : null}
             {step === 1 ? <PurposeStep data={data} update={update} /> : null}
@@ -416,28 +495,72 @@ async function buildSubmissionError(response: Response) {
   }
 }
 
+function normalizeTransferItems(items: TransferItem[]) {
+  return items
+    .map((item) => ({
+      ...item,
+      transferPurpose: item.transferPurpose.trim(),
+      recipients: item.recipients.trim(),
+      dataReceiverRole: item.dataReceiverRole.trim(),
+      destinationCountry: item.destinationCountry.trim(),
+      exportProtectionMechanism: item.exportProtectionMechanism.trim(),
+    }))
+    .filter(
+      (item) =>
+        item.transferPurpose ||
+        item.recipients ||
+        item.dataReceiverRole ||
+        item.destinationCountry ||
+        item.exportProtectionMechanism,
+    );
+}
+
+function summarizeTransferItems(items: TransferItem[]) {
+  const line = (value: string, index: number) => `Pengiriman ${index + 1}: ${value}`;
+  const crossBorderItems = items.filter((item) => item.isCrossBorder);
+
+  return {
+    transferPurpose: items
+      .map((item, index) => line(item.transferPurpose, index))
+      .join("\n"),
+    recipients: items.map((item, index) => line(item.recipients, index)).join("\n"),
+    dataReceiverRole: items
+      .map((item, index) => line(item.dataReceiverRole, index))
+      .join("\n"),
+    transferMechanism: items
+      .map((item, index) => line(item.dataReceiverRole || "Belum ditentukan", index))
+      .join("\n"),
+    destinationCountry: crossBorderItems
+      .map((item, index) => line(item.destinationCountry, index))
+      .join("\n"),
+    exportProtectionMechanism: crossBorderItems
+      .map((item, index) => line(item.exportProtectionMechanism, index))
+      .join("\n"),
+  };
+}
+
 function fieldLabel(field: string) {
   const labels: Record<string, string> = {
     activityName: "Nama Aktivitas",
     processDescription: "Deskripsi Aktivitas",
     departmentId: "Unit Kerja",
-    picName: "PIC",
-    picEmail: "Email PIC",
     controllerProcessorContacts:
       "Nama dan Kontak Pengendali/Pengendali Bersama/Prosesor",
     dpoContact: "Kontak DPO",
+    hasTransfer: "Apakah terdapat transfer data pribadi",
     transferPurpose: "Tujuan Pengiriman Data Pribadi",
     processingPurpose: "Tujuan Pemrosesan",
     sourceMechanism: "Sumber Pengumpulan Data Pribadi",
     subjectCategories: "Kategori Subjek Data",
     personalDataTypes: "Jenis Data Pribadi",
-    recipients: "Pihak selain Pengendali yang dapat mengakses Data Pribadi",
+    recipients: "Pihak penerima Data Pribadi",
+    processorContractLink: "Lokasi penerima",
+    dataReceiverRole: "Jenis transfer",
     transferMechanism: "Rincian Transfer Data Pribadi",
     storageLocation: "Penyimpanan",
     retentionPeriod: "Retensi",
     technicalMeasures: "Langkah Teknis",
     organizationalMeasures: "Langkah Organisasi",
-    dataFlowMapping: "Pemetaan Aliran Data Pribadi",
     destinationCountry: "Negara Transfer",
     exportProtectionMechanism: "Mekanisme Pelindungan Ekspor",
     dataSubjectRights: "Hak Subjek Data Pribadi",
@@ -450,10 +573,21 @@ function IdentityStep({
   data,
   departments,
   update,
+  lockDepartment,
+  allowFreeDepartment,
+  governanceSettings,
+  activePicName,
 }: {
   data: WizardData;
   departments: Department[];
   update: <K extends keyof WizardData>(key: K, value: WizardData[K]) => void;
+  lockDepartment: boolean;
+  allowFreeDepartment: boolean;
+  governanceSettings: {
+    controllerProcessorContacts: string;
+    dpoContact: string;
+  } | null;
+  activePicName: string;
 }) {
   return (
     <div className="grid gap-5 md:grid-cols-2">
@@ -468,67 +602,63 @@ function IdentityStep({
         />
       </Field>
       <Field label="Unit Kerja *" help="Wajib pilih satu unit kerja penanggung jawab.">
-        <Select
-          value={data.departmentId}
-          onChange={(event) => update("departmentId", event.target.value)}
-        >
-          <option value="">Select Department</option>
-          {departments.map((department) => (
-            <option key={department.id} value={department.id}>
-              {department.name}
-            </option>
-          ))}
-        </Select>
+        {allowFreeDepartment ? (
+          <Input
+            value={data.departmentId}
+            onChange={(event) => update("departmentId", event.target.value)}
+            placeholder="Contoh: Finance, HR, Marketing, Demo Unit"
+          />
+        ) : (
+          <Select
+            value={data.departmentId}
+            onChange={(event) => update("departmentId", event.target.value)}
+            disabled={lockDepartment}
+          >
+            <option value="">Select Department</option>
+            {departments.map((department) => (
+              <option key={department.id} value={department.id}>
+                {department.name}
+              </option>
+            ))}
+          </Select>
+        )}
+        {lockDepartment ? (
+          <p className="mt-2 text-xs text-slate-500">
+            Unit kerja dikunci sesuai mapping akun user.
+          </p>
+        ) : null}
       </Field>
       <Field
-        label="Person In Charge (PIC) *"
+        label="Person In Charge (PIC)"
         className="md:col-span-2"
-        help="Nama PIC minimal 2 karakter dan email harus memakai format email yang valid."
+        requirement="optional"
+        help="PIC tidak diinput per RoPA. PIC diambil dari pengaturan akun user yang membuat aktivitas."
       >
-        <div className="grid gap-3 md:grid-cols-2">
-          <div className="relative">
-            <User className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-            <Input
-              className="pl-9"
-              placeholder="Enter name"
-              value={data.picName}
-              onChange={(event) => update("picName", event.target.value)}
-            />
-          </div>
-          <div className="relative">
-            <Mail className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-            <Input
-              className="pl-9"
-              placeholder="Enter email"
-              value={data.picEmail}
-              onChange={(event) => update("picEmail", event.target.value)}
-            />
-          </div>
+        <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
+          {activePicName.trim() || "PIC belum diatur pada profil akun."}
         </div>
       </Field>
       <Field
-        label="Nama dan Kontak Pengendali/Pengendali Bersama/Prosesor *"
+        label="Nama dan Kontak Pengendali/Pengendali Bersama/Prosesor"
         className="md:col-span-2"
-        help="Wajib. Cantumkan nama pihak dan kontak yang bisa dihubungi (email/telepon) untuk setiap peran yang relevan."
+        requirement="optional"
+        help="Dikelola oleh akun DPO/Master Admin pada pengaturan akun, dan otomatis dipakai di setiap RoPA."
       >
-        <Textarea
-          placeholder="Contoh: PT ABC (Pengendali) - dpo@abc.co.id; Vendor XYZ (Prosesor) - privacy@xyz.com"
-          value={data.controllerProcessorContacts}
-          onChange={(event) =>
-            update("controllerProcessorContacts", event.target.value)
-          }
-        />
+        <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          {governanceSettings?.controllerProcessorContacts?.trim() ||
+            "Belum diatur. Silakan minta DPO mengisi pada Account/Settings."}
+        </div>
       </Field>
       <Field
-        label="Kontak Pejabat/Petugas Pelindung Data Pribadi (DPO) *"
+        label="Kontak Pejabat/Petugas Pelindung Data Pribadi (DPO)"
         className="md:col-span-2"
-        help="Wajib. Isi kontak DPO/Petugas PDP yang bertanggung jawab atas aktivitas ini."
+        requirement="optional"
+        help="Dikelola oleh akun DPO/Master Admin pada pengaturan akun, dan otomatis dipakai di setiap RoPA."
       >
-        <Input
-          placeholder="dpo@company.com / +62..."
-          value={data.dpoContact}
-          onChange={(event) => update("dpoContact", event.target.value)}
-        />
+        <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          {governanceSettings?.dpoContact?.trim() ||
+            "Belum diatur. Silakan minta DPO mengisi pada Account/Settings."}
+        </div>
       </Field>
       <Field
         label="Deskripsi Aktivitas *"
@@ -577,6 +707,14 @@ function PurposeStep({
             ["Contractual", "Necessary for performance of a contract."],
             ["Legal Obligation", "Required by applicable law."],
             ["Legitimate Interest", "Kepentingan sah of the controller."],
+            [
+              "Vital Interest",
+              "Necessary to protect vital interests of the data subject or another person.",
+            ],
+            [
+              "Public Interest",
+              "Necessary for public interest or official authority duties.",
+            ],
           ].map(([value, description]) => (
             <CheckboxRow key={value}>
               <input
@@ -593,16 +731,6 @@ function PurposeStep({
             </CheckboxRow>
           ))}
         </div>
-      </Field>
-      <Field
-        label="Tujuan Pengiriman Data Pribadi *"
-        help="Wajib. Isi tujuan pengiriman/berbagi data pribadi ke pihak internal/eksternal."
-      >
-        <Textarea
-          value={data.transferPurpose}
-          onChange={(event) => update("transferPurpose", event.target.value)}
-          placeholder="Contoh: Verifikasi vendor, pemrosesan payroll, atau pelaporan regulator."
-        />
       </Field>
       <Field
         label="Sumber Pengumpulan Data Pribadi *"
@@ -840,7 +968,146 @@ function TransferStep({
   data: WizardData;
   update: <K extends keyof WizardData>(key: K, value: WizardData[K]) => void;
 }) {
-  const countryReference = lookupCountryReference(data.destinationCountry);
+  const transferItems = data.transferItems.length
+    ? data.transferItems
+    : [createTransferItem()];
+
+  function updateTransferItem<K extends keyof TransferItem>(
+    itemId: string,
+    key: K,
+    value: TransferItem[K],
+  ) {
+    const next = transferItems.map((item) =>
+      item.id === itemId ? { ...item, [key]: value } : item,
+    );
+    update("transferItems", next);
+  }
+
+  function updateItemCrossBorder(itemId: string, enabled: boolean) {
+    const next = transferItems.map((item) =>
+      item.id === itemId
+        ? {
+            ...item,
+            isCrossBorder: enabled,
+            destinationCountry: enabled ? item.destinationCountry : "",
+            exportProtectionMechanism: enabled ? item.exportProtectionMechanism : "",
+          }
+        : item,
+    );
+
+    update("transferItems", next);
+  }
+
+  function updateHasTransfer(enabled: boolean) {
+    update("hasTransfer", enabled);
+
+    if (!enabled) {
+      update("transferPurpose", "");
+      update("recipients", "");
+      update("processorContractLink", "");
+      update("dataReceiverRole", "");
+      update("transferMechanism", "");
+      update("isCrossBorder", false);
+      update("destinationCountry", "");
+      update("exportProtectionMechanism", "");
+      update("transferItems", []);
+      return;
+    }
+
+    if (!data.transferItems.length) {
+      update("transferItems", [createTransferItem()]);
+    }
+  }
+
+  function addTransferItem() {
+    update("transferItems", [...transferItems, createTransferItem()]);
+  }
+
+  function removeTransferItem(itemId: string) {
+    const next = transferItems.filter((item) => item.id !== itemId);
+    update("transferItems", next.length ? next : [createTransferItem()]);
+  }
+
+  return (
+    <div className="space-y-5">
+      <Field
+        label="Apakah terdapat transfer data pribadi?"
+        requirement="required"
+        help="Pilih Ya jika ada pengiriman/berbagi data pribadi ke pihak lain. Jika Tidak, kolom transfer lanjutan tidak ditampilkan."
+      >
+        <div className="grid gap-3 md:grid-cols-2">
+          <CheckboxRow>
+            <input
+              type="radio"
+              name="hasTransfer"
+              className="mt-1"
+              checked={data.hasTransfer}
+              onChange={() => updateHasTransfer(true)}
+            />
+            <span className="font-semibold">Ya</span>
+          </CheckboxRow>
+          <CheckboxRow>
+            <input
+              type="radio"
+              name="hasTransfer"
+              className="mt-1"
+              checked={!data.hasTransfer}
+              onChange={() => updateHasTransfer(false)}
+            />
+            <span className="font-semibold">Tidak</span>
+          </CheckboxRow>
+        </div>
+      </Field>
+
+      {!data.hasTransfer ? (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
+          Tidak ada transfer data pribadi pada aktivitas ini. Field rincian transfer
+          tidak perlu diisi.
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {transferItems.map((item, index) => (
+            <TransferItemCard
+              key={item.id}
+              item={item}
+              index={index}
+              canRemove={transferItems.length > 1}
+              onChange={updateTransferItem}
+              onCrossBorderChange={updateItemCrossBorder}
+              onRemove={removeTransferItem}
+            />
+          ))}
+
+          <Button type="button" variant="secondary" onClick={addTransferItem}>
+            <Plus className="h-4 w-4" />
+            Tambah Pengiriman
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TransferItemCard({
+  item,
+  index,
+  canRemove,
+  onChange,
+  onCrossBorderChange,
+  onRemove,
+}: {
+  item: TransferItem;
+  index: number;
+  canRemove: boolean;
+  onChange: <K extends keyof TransferItem>(
+    itemId: string,
+    key: K,
+    value: TransferItem[K],
+  ) => void;
+  onCrossBorderChange: (itemId: string, enabled: boolean) => void;
+  onRemove: (itemId: string) => void;
+}) {
+  const countryReference = lookupCountryReference(item.destinationCountry);
   const sourceLinks = splitSourceLinks(countryReference?.source);
   const protectionPlaceholder =
     countryReference?.category === "Khusus"
@@ -851,147 +1118,175 @@ function TransferStep({
           ? "Contoh: SCC + enhanced due diligence + DPO approval"
           : "SCCs, adequacy, consent, DPA, atau mekanisme lain...";
 
-  function updateCrossBorder(enabled: boolean) {
-    update("isCrossBorder", enabled);
-
-    if (!enabled) {
-      update("destinationCountry", "");
-      update("exportProtectionMechanism", "");
-    }
-  }
-
   return (
-    <div className="grid gap-5 md:grid-cols-2">
-      <Field
-        label="Pihak selain Pengendali yang dapat mengakses Data Pribadi *"
-        help="Wajib. Sebutkan nama pihak internal/eksternal di luar Pengendali yang memiliki akses."
-      >
-        <Input
-          value={data.recipients}
-          onChange={(event) => update("recipients", event.target.value)}
-          placeholder="Processor, partner, regulator..."
-        />
-      </Field>
-      <Field label="Peran Pihak Terkait *" help="Wajib. Pilih peran utama pihak terkait.">
-        <Select
-          value={data.dataReceiverRole}
-          onChange={(event) => update("dataReceiverRole", event.target.value)}
-        >
-          <option>Processor</option>
-          <option>Joint Controller</option>
-          <option>Independent Controller</option>
-          <option>Regulator</option>
-        </Select>
-      </Field>
-      <Field
-        label="Kontak atau Referensi Kontrak Pihak Terkait *"
-        help="Wajib. Isi kontak pihak terkait dan/atau referensi kontrak pemrosesan."
-      >
-        <Input
-          value={data.processorContractLink}
-          onChange={(event) => update("processorContractLink", event.target.value)}
-          placeholder="privacy@vendor.com atau https://..."
-        />
-      </Field>
-      <Field
-        label="Rincian Transfer Data Pribadi *"
-        help="Wajib. Jelaskan metode transfer seperti API, SFTP, portal vendor, atau media lain."
-      >
-        <Input
-          value={data.transferMechanism}
-          onChange={(event) => update("transferMechanism", event.target.value)}
-        />
-      </Field>
-      <Field label="Cross-Border Transfer" requirement="required" className="md:col-span-2">
-        <CheckboxRow>
-          <input
-            type="checkbox"
-            className="mt-1"
-            checked={data.isCrossBorder}
-            onChange={(event) => updateCrossBorder(event.target.checked)}
-          />
-          <span>
-            <span className="block font-bold">Transfer outside Indonesia</span>
-            <span className="text-xs text-slate-500">
-              Jika tidak ada transfer ke luar Indonesia, biarkan tidak dicentang.
-              TIA task hanya dibuat jika transfer luar negeri aktif atau negara
-              tujuan diisi.
-            </span>
-          </span>
-        </CheckboxRow>
-      </Field>
-      {data.isCrossBorder ? (
-        <>
-          <Field
-            label="Negara Transfer"
-            requirement="conditional"
-            help="Wajib jika transfer luar negeri aktif. Pilih/ketik negara dari Country List Updated March 2026."
-          >
-            <Input
-              list="country-reference-list"
-              value={data.destinationCountry}
-              onChange={(event) => update("destinationCountry", event.target.value)}
-              placeholder="e.g., Singapore, USA"
-            />
-            <datalist id="country-reference-list">
-              {countryReferences.map((reference) => (
-                <option key={reference.country} value={reference.country} />
-              ))}
-            </datalist>
-          </Field>
-          <Field
-            label="Mekanisme Pelindungan Ekspor"
-            requirement="conditional"
-            help="Wajib jika transfer luar negeri aktif. Isi instrumen/safeguard transfer, misalnya SCC, DPA, consent, atau approval DPO."
-          >
-            <Input
-              value={data.exportProtectionMechanism}
-              onChange={(event) =>
-                update("exportProtectionMechanism", event.target.value)
-              }
-              placeholder={protectionPlaceholder}
-            />
-          </Field>
-          <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-blue-900 md:col-span-2">
-            {countryReference ? (
-              <div className="space-y-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-bold">Aturan negara tujuan:</span>
-                  <Badge tone={countryReference.category === "Khusus" ? "green" : "yellow"}>
-                    {countryReference.category}
-                  </Badge>
-                </div>
-                <div>{countryReference.regulation}</div>
-                {sourceLinks.length ? (
-                  <div className="flex flex-wrap gap-2">
-                    {sourceLinks.map((source, index) => (
-                      <a
-                        key={source}
-                        href={source}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="font-semibold text-blue-700 underline underline-offset-2"
-                      >
-                        Sumber {sourceLinks.length > 1 ? index + 1 : ""}
-                      </a>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ) : (
-              <div>
-                Negara ini belum ditemukan di referensi workbook. Legal/DPO perlu
-                melengkapi nama aturan, kategori PDP, dan sumbernya pada TIA.
-              </div>
-            )}
-          </div>
-        </>
-      ) : (
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600 md:col-span-2">
-          Tidak ada transfer luar negeri. Kolom negara tujuan dan mekanisme
-          pelindungan ekspor tidak perlu diisi untuk aktivitas domestik.
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-base font-semibold text-slate-950">
+            Pengiriman Data Pribadi {index + 1}
+          </h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Isi satu penerima atau tujuan pengiriman per blok agar analisis TIA lebih
+            rapi.
+          </p>
         </div>
-      )}
+        {canRemove ? (
+          <Button
+            type="button"
+            variant="ghost"
+            className="shrink-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+            onClick={() => onRemove(item.id)}
+          >
+            <Trash2 className="h-4 w-4" />
+            Hapus
+          </Button>
+        ) : null}
+      </div>
+
+      <div className="grid gap-5 md:grid-cols-2">
+        <Field
+          label="Tujuan Pengiriman Data Pribadi *"
+          help="Wajib. Isi tujuan pengiriman/berbagi data pribadi."
+          className="md:col-span-2"
+        >
+          <Textarea
+            value={item.transferPurpose}
+            onChange={(event) =>
+              onChange(item.id, "transferPurpose", event.target.value)
+            }
+            placeholder="Contoh: verifikasi vendor, payroll processor, pelaporan regulator."
+          />
+        </Field>
+        <Field label="Pihak penerima *" help="Wajib. Isi pihak yang menerima data pribadi.">
+          <Input
+            value={item.recipients}
+            onChange={(event) => onChange(item.id, "recipients", event.target.value)}
+            placeholder="Vendor A, Partner B, regulator..."
+          />
+        </Field>
+        <Field label="Jenis transfer *" help="Wajib. Pilih jenis transfer yang paling sesuai.">
+          <Select
+            value={item.dataReceiverRole}
+            onChange={(event) =>
+              onChange(item.id, "dataReceiverRole", event.target.value)
+            }
+          >
+            <option value="">Pilih jenis transfer</option>
+            <option value="Internal Sharing">Internal Sharing</option>
+            <option value="Processor/Vendor">Processor/Vendor</option>
+            <option value="Pengendali Data Pribadi Lain">
+              Pengendali Data Pribadi Lain
+            </option>
+            <option value="Joint Controller">Joint Controller</option>
+            <option value="Regulator">Regulator</option>
+            <option value="Affiliate Group">Affiliate Group</option>
+          </Select>
+        </Field>
+
+        <Field
+          label="Cross-Border Transfer *"
+          requirement="required"
+          className="md:col-span-2"
+        >
+          <div className="grid gap-3 md:grid-cols-2">
+            <CheckboxRow>
+              <input
+                type="radio"
+                name={`crossBorder-${item.id}`}
+                className="mt-1"
+                checked={item.isCrossBorder}
+                onChange={() => onCrossBorderChange(item.id, true)}
+              />
+              <span className="font-semibold">Ya</span>
+            </CheckboxRow>
+            <CheckboxRow>
+              <input
+                type="radio"
+                name={`crossBorder-${item.id}`}
+                className="mt-1"
+                checked={!item.isCrossBorder}
+                onChange={() => onCrossBorderChange(item.id, false)}
+              />
+              <span className="font-semibold">Tidak</span>
+            </CheckboxRow>
+          </div>
+        </Field>
+
+        {item.isCrossBorder ? (
+          <>
+            <Field
+              label="Negara Transfer"
+              requirement="conditional"
+              help="Wajib jika transfer luar negeri aktif. Pilih/ketik negara dari daftar referensi."
+            >
+              <Input
+                list="country-reference-list"
+                value={item.destinationCountry}
+                onChange={(event) =>
+                  onChange(item.id, "destinationCountry", event.target.value)
+                }
+                placeholder="e.g., Singapore, USA"
+              />
+              <datalist id="country-reference-list">
+                {countryReferences.map((reference) => (
+                  <option key={reference.country} value={reference.country} />
+                ))}
+              </datalist>
+            </Field>
+            <Field
+              label="Mekanisme Pelindungan Ekspor"
+              requirement="conditional"
+              help="Wajib jika transfer luar negeri aktif. Isi instrumen/safeguard transfer, misalnya SCC, DPA, consent, atau approval DPO."
+            >
+              <Input
+                value={item.exportProtectionMechanism}
+                onChange={(event) =>
+                  onChange(item.id, "exportProtectionMechanism", event.target.value)
+                }
+                placeholder={protectionPlaceholder}
+              />
+            </Field>
+            <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-blue-900 md:col-span-2">
+              {countryReference ? (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-bold">Aturan negara tujuan:</span>
+                    <Badge tone={countryReference.category === "Khusus" ? "green" : "yellow"}>
+                      {countryReference.category}
+                    </Badge>
+                  </div>
+                  <div>{countryReference.regulation}</div>
+                  {sourceLinks.length ? (
+                    <div className="flex flex-wrap gap-2">
+                      {sourceLinks.map((source, sourceIndex) => (
+                        <a
+                          key={source}
+                          href={source}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-semibold text-blue-700 underline underline-offset-2"
+                        >
+                          Sumber {sourceLinks.length > 1 ? sourceIndex + 1 : ""}
+                        </a>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div>
+                  Negara ini belum ditemukan di referensi workbook. Legal/DPO perlu
+                  melengkapi nama aturan, kategori PDP, dan sumbernya pada TIA.
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600 md:col-span-2">
+            Tidak ada transfer lintas negara. Kolom negara tujuan dan mekanisme
+            pelindungan ekspor tidak perlu diisi.
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1034,7 +1329,7 @@ function SecurityStep({
       <Field
         label="Langkah Teknis"
         requirement="required"
-        help="Wajib. Isi kontrol teknis seperti enkripsi, RBAC, logging, masking, atau backup."
+        help="Wajib, minimal 3 karakter. Isi kontrol teknis seperti enkripsi, RBAC, logging, masking, atau backup."
       >
         <Textarea
           value={data.technicalMeasures}
@@ -1045,7 +1340,7 @@ function SecurityStep({
       <Field
         label="Langkah Organisasi"
         requirement="required"
-        help="Wajib. Isi kontrol organisasi seperti SOP, training, approval, review akses, atau vendor due diligence."
+        help="Wajib, minimal 3 karakter. Isi kontrol organisasi seperti SOP, training, approval, review akses, atau vendor due diligence."
       >
         <Textarea
           value={data.organizationalMeasures}
@@ -1075,18 +1370,6 @@ function SecurityStep({
           Centang hak yang sudah dapat dipenuhi oleh proses, kanal, atau SOP yang
           tersedia. Pilihan ini akan masuk ke ringkasan RoPA dan draft asesmen.
         </p>
-      </Field>
-      <Field
-        label="Pemetaan Aliran Data Pribadi *"
-        requirement="required"
-        className="md:col-span-2"
-        help="Wajib. Jelaskan aliran data dari sumber, proses internal, pihak penerima, sampai retensi/pemusnahan."
-      >
-        <Textarea
-          value={data.dataFlowMapping}
-          onChange={(event) => update("dataFlowMapping", event.target.value)}
-          placeholder="Contoh: Data masuk dari form onboarding -> HRIS -> payroll processor -> arsip terenkripsi."
-        />
       </Field>
       <Field label="Konteks Historis - Sebelum" requirement="optional">
         <Input
@@ -1151,23 +1434,25 @@ function RiskAssessmentStep({
       >
         <div className="grid gap-3">
           {highRiskCategoryOptions.map((category) => (
-            <CheckboxRow key={category.id}>
+            <CheckboxRow
+              key={category.id}
+              className={`items-start gap-4 rounded-2xl p-4 ${
+                data.highRiskCategories.includes(category.id)
+                  ? "border-blue-300 bg-blue-50/70 shadow-sm"
+                  : ""
+              }`}
+            >
               <input
                 type="checkbox"
-                className="mt-1"
+                className="mt-1 h-4 w-4 shrink-0"
                 checked={data.highRiskCategories.includes(category.id)}
                 onChange={() => toggleHighRiskCategory(category.id)}
               />
-              <span>
-                <span className="mb-1 flex items-center gap-2">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-700">
-                    {category.code}
-                  </span>
-                  <span className="text-sm font-semibold leading-5">
-                    {category.shortLabel}
-                  </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold leading-5 text-slate-950">
+                  {category.shortLabel}
                 </span>
-                <span className="block text-xs leading-5 text-slate-500">
+                <span className="mt-2 block text-xs leading-5 text-slate-500">
                   {category.label}
                 </span>
               </span>
@@ -1191,48 +1476,6 @@ function RiskAssessmentStep({
           LIA atau TIA jika dasar hukum atau transfer lintas negara memicunya.
         </div>
       )}
-
-      <div className="grid gap-5 lg:grid-cols-2">
-        <Field
-          label="Hasil analisis / catatan Risiko Tinggi"
-          requirement="optional"
-          help="Isi ringkasan alasan centang kategori Risiko Tinggi, atau catatan bahwa tidak ada kategori yang relevan."
-        >
-          <Textarea
-            value={data.riskContext}
-            onChange={(event) => update("riskContext", event.target.value)}
-            placeholder="Contoh: Aktivitas menggunakan profiling pelanggan untuk penawaran otomatis; dampak perlu dinilai dalam DPIA..."
-          />
-        </Field>
-        <Field
-          label="Referensi Risk Register"
-          requirement="optional"
-          help="Masukkan ID risiko, link, atau catatan rujukan bila pembahasan detail ada di Risk Register."
-        >
-          <Textarea
-            value={data.riskRegisterReference}
-            onChange={(event) => update("riskRegisterReference", event.target.value)}
-            placeholder="Contoh: RR-PRIV-2026-014 atau link Risk Register..."
-          />
-        </Field>
-      </div>
-
-      <div className="grid gap-5 lg:grid-cols-2">
-        <Field label="Kontrol yang Sudah Ada" requirement="optional">
-          <Textarea
-            value={data.existingControls}
-            onChange={(event) => update("existingControls", event.target.value)}
-            placeholder="Contoh: RBAC, encryption, logging, privacy notice, SOP..."
-          />
-        </Field>
-      </div>
-      <Field label="Rencana Mitigasi" requirement="optional">
-        <Textarea
-          value={data.riskMitigationPlan}
-          onChange={(event) => update("riskMitigationPlan", event.target.value)}
-          placeholder="Isi rencana tindakan, owner, dan timeline mitigasi bila ada..."
-        />
-      </Field>
     </div>
   );
 }
@@ -1270,7 +1513,7 @@ function Field({
   return (
     <div className={className}>
       <div className="mb-2 flex items-center gap-2">
-        <Label>{displayLabel}</Label>
+        <Label help={defaultFieldHelp(displayLabel)}>{displayLabel}</Label>
         {requirementLabel ? (
           <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${badgeClass}`}>
             {requirementLabel}
@@ -1298,5 +1541,5 @@ function splitSourceLinks(source: string | undefined) {
   return (source ?? "")
     .split("|")
     .map((value) => value.trim())
-    .filter(Boolean);
+    .filter((value) => /^https?:\/\//i.test(value));
 }

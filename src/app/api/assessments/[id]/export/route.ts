@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getViewerFromRequest, toAccessScope } from "@/lib/access";
 import { getAssessmentById } from "@/lib/data";
 import {
   buildDpiaWorkbook,
@@ -26,11 +27,17 @@ type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
+  const viewer = await getViewerFromRequest(request);
+
+  if (!viewer) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await context.params;
-  const { searchParams } = new URL(_request.url);
+  const { searchParams } = new URL(request.url);
   const scope = searchParams.get("scope");
-  const assessment = await getAssessmentById(id);
+  const assessment = await getAssessmentById(id, toAccessScope(viewer));
 
   if (!assessment) {
     return NextResponse.json({ error: "Assessment not found" }, { status: 404 });

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getViewerFromRequest, toAccessScope } from "@/lib/access";
 import { createRopa, getDepartments } from "@/lib/data";
 import { parseRopaImportWorkbook } from "@/lib/ropa-import";
 import { createRopaSchema } from "@/lib/validators";
@@ -6,6 +7,13 @@ import { createRopaSchema } from "@/lib/validators";
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  const viewer = await getViewerFromRequest(request);
+
+  if (!viewer) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const scope = toAccessScope(viewer);
   const formData = await request.formData();
   const file = formData.get("file");
 
@@ -23,7 +31,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const departments = await getDepartments();
+  const departments = await getDepartments(scope);
   const parsedWorkbook = await parseRopaImportWorkbook(
     Buffer.from(await file.arrayBuffer()),
     departments,
@@ -67,7 +75,29 @@ export async function POST(request: Request) {
   const created = [];
 
   for (const row of parsedWorkbook.rows) {
-    const result = await createRopa(row.payload);
+    let result: Awaited<ReturnType<typeof createRopa>>;
+    try {
+      result = await createRopa(
+        {
+          ...row.payload,
+          userId: viewer.id,
+        },
+        scope,
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("Forbidden department scope")) {
+        return NextResponse.json(
+          { error: "Ada row dengan department di luar scope akun user." },
+          { status: 403 },
+        );
+      }
+
+      return NextResponse.json(
+        { error: "Gagal menyimpan hasil import RoPA." },
+        { status: 500 },
+      );
+    }
+
     created.push({
       rowNumber: row.rowNumber,
       id: result.id,

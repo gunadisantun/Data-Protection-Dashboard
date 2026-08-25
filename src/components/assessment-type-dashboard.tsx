@@ -14,12 +14,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TBody, TD, TH, THead } from "@/components/ui/table";
-import { listTasks } from "@/lib/data";
+import type { AccessScope } from "@/lib/data";
+import { getModuleColumnSettings, listTasks } from "@/lib/data";
+import { getModuleColumnDefinitions } from "@/lib/module-columns";
 import type { AssessmentType } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
 
 type AssessmentTypeDashboardProps = {
   type: AssessmentType;
+  scope?: AccessScope;
+  canDeleteTasks?: boolean;
 };
 
 const assessmentConfig: Record<
@@ -77,10 +81,21 @@ const assessmentConfig: Record<
   },
 };
 
-export async function AssessmentTypeDashboard({ type }: AssessmentTypeDashboardProps) {
+export async function AssessmentTypeDashboard({
+  type,
+  scope,
+  canDeleteTasks = false,
+}: AssessmentTypeDashboardProps) {
   const config = assessmentConfig[type];
   const Icon = config.icon;
-  const tasks = (await listTasks()).filter((task) => task.taskType === type);
+  const tasks = (await listTasks(undefined, { scope })).filter(
+    (task) => task.taskType === type,
+  );
+  const columnSettings = await getModuleColumnSettings(config.hrefSuffix);
+  const visibleColumns = getModuleColumnDefinitions(
+    config.hrefSuffix,
+    columnSettings.customColumns,
+  ).filter((column) => columnSettings.visibleColumns.includes(column.key));
   const openTasks = tasks.filter((task) => task.status !== "Done");
   const doneTasks = tasks.filter((task) => task.status === "Done");
   const inProgressTasks = tasks.filter((task) => task.status === "In Progress");
@@ -157,47 +172,25 @@ export async function AssessmentTypeDashboard({ type }: AssessmentTypeDashboardP
             <Table>
               <THead>
                 <tr>
-                  <TH>Activity</TH>
-                  <TH>Department</TH>
-                  <TH>Status</TH>
-                  <TH>Severity</TH>
-                  <TH>Due Date</TH>
-                  <TH>Action</TH>
+                  {visibleColumns.map((column) => (
+                    <TH key={column.key}>{column.label}</TH>
+                  ))}
                 </tr>
               </THead>
               <TBody>
                 {openTasks.map((task) => (
                   <tr key={task.id}>
-                    <TD>
-                      <div className="font-bold text-slate-950">
-                        {task.activityName}
-                      </div>
-                      <div className="text-xs text-slate-500">{task.reason}</div>
-                    </TD>
-                    <TD>{task.departmentName}</TD>
-                    <TD>
-                      <Badge tone={statusTone(task.status)}>{task.status}</Badge>
-                    </TD>
-                    <TD>
-                      <Badge tone={task.severity === "Critical" ? "red" : "yellow"}>
-                        {task.severity}
-                      </Badge>
-                    </TD>
-                    <TD>{formatDate(task.dueDate)}</TD>
-                    <TD>
-                      <div className="flex flex-wrap gap-2">
-                        <Link href={`/assessments/${task.id}/${config.hrefSuffix}`}>
-                          <Button variant="secondary" size="sm">
-                            Open {type}
-                          </Button>
-                        </Link>
-                        <DeleteActionButton
-                          endpoint={`/api/tasks/${task.id}`}
-                          label="Hapus"
-                          confirmMessage={`Hapus task ${type} untuk "${task.activityName}"?`}
-                        />
-                      </div>
-                    </TD>
+                    {visibleColumns.map((column) => (
+                      <AssessmentDashboardCell
+                        key={column.key}
+                        columnKey={column.key}
+                        task={task}
+                        hrefSuffix={config.hrefSuffix}
+                        type={type}
+                        canDeleteTasks={canDeleteTasks}
+                        actionLabel={`Open ${type}`}
+                      />
+                    ))}
                   </tr>
                 ))}
               </TBody>
@@ -274,37 +267,25 @@ export async function AssessmentTypeDashboard({ type }: AssessmentTypeDashboardP
           <Table>
             <THead>
               <tr>
-                <TH>Activity</TH>
-                <TH>Department</TH>
-                <TH>PIC</TH>
-                <TH>Updated</TH>
-                <TH>Action</TH>
+                {visibleColumns.map((column) => (
+                  <TH key={column.key}>{column.label}</TH>
+                ))}
               </tr>
             </THead>
             <TBody>
               {doneTasks.map((task) => (
                 <tr key={task.id}>
-                  <TD>
-                    <div className="font-bold text-slate-950">{task.activityName}</div>
-                    <div className="text-xs text-slate-500">{task.title}</div>
-                  </TD>
-                  <TD>{task.departmentName}</TD>
-                  <TD>{task.picName}</TD>
-                  <TD>{formatDate(task.updatedAt)}</TD>
-                  <TD>
-                    <div className="flex flex-wrap gap-2">
-                      <Link href={`/assessments/${task.id}/${config.hrefSuffix}`}>
-                        <Button variant="secondary" size="sm">
-                          Lihat {type}
-                        </Button>
-                      </Link>
-                      <DeleteActionButton
-                        endpoint={`/api/tasks/${task.id}`}
-                        label="Hapus"
-                        confirmMessage={`Hapus task ${type} yang sudah dikerjakan untuk "${task.activityName}"?`}
-                      />
-                    </div>
-                  </TD>
+                  {visibleColumns.map((column) => (
+                    <AssessmentDashboardCell
+                      key={column.key}
+                      columnKey={column.key}
+                      task={task}
+                      hrefSuffix={config.hrefSuffix}
+                      type={type}
+                      canDeleteTasks={canDeleteTasks}
+                      actionLabel={`Lihat ${type}`}
+                    />
+                  ))}
                 </tr>
               ))}
             </TBody>
@@ -336,23 +317,124 @@ function SummaryCard({
   suffix?: string;
 }) {
   return (
-    <Card>
-      <CardContent className="pt-5">
-        <div className="flex items-start justify-between">
-          <span className={`flex h-10 w-10 items-center justify-center rounded ${accent}`}>
+    <Card className="overflow-hidden">
+      <CardContent className="relative p-7 pt-7 sm:p-7 sm:pt-7">
+        <div className="absolute right-6 top-6 h-14 w-14 rounded-full bg-slate-100/70 blur-2xl" />
+        <div className="relative flex items-start justify-between gap-4">
+          <span
+            className={`flex h-12 w-12 items-center justify-center rounded-2xl shadow-sm ring-1 ring-white/80 ${accent}`}
+          >
             <Icon className="h-5 w-5" />
           </span>
-          <span className="text-xs font-semibold text-slate-400">Monthly</span>
+          <span className="pt-1 text-xs font-semibold text-slate-400">Monthly</span>
         </div>
-        <div className="mt-8 text-4xl font-bold text-slate-950">
+        <div className="relative mt-8 text-4xl font-bold text-slate-950">
           {value}
           {suffix}
         </div>
-        <div className="text-sm text-slate-500">{label}</div>
-        <div className="mt-8 text-xs font-semibold text-emerald-600">{caption}</div>
+        <div className="relative text-sm font-semibold text-slate-600">{label}</div>
+        <div className="relative mt-8 text-xs font-semibold text-emerald-600">{caption}</div>
       </CardContent>
     </Card>
   );
+}
+
+function AssessmentDashboardCell({
+  columnKey,
+  task,
+  hrefSuffix,
+  type,
+  canDeleteTasks,
+  actionLabel,
+}: {
+  columnKey: string;
+  task: Awaited<ReturnType<typeof listTasks>>[number];
+  hrefSuffix: "dpia" | "tia" | "lia";
+  type: AssessmentType;
+  canDeleteTasks: boolean;
+  actionLabel: string;
+}) {
+  if (columnKey === "activityName") {
+    return (
+      <TD>
+        <div className="font-bold text-slate-950">{task.activityName}</div>
+        <div className="text-xs text-slate-500">{task.reason}</div>
+      </TD>
+    );
+  }
+
+  if (columnKey === "departmentName") {
+    return <TD>{task.departmentName}</TD>;
+  }
+
+  if (columnKey === "status") {
+    return (
+      <TD>
+        <Badge tone={statusTone(task.status)}>{task.status}</Badge>
+      </TD>
+    );
+  }
+
+  if (columnKey === "severity") {
+    return (
+      <TD>
+        <Badge tone={task.severity === "Critical" ? "red" : "yellow"}>
+          {task.severity}
+        </Badge>
+      </TD>
+    );
+  }
+
+  if (columnKey === "dueDate") {
+    return <TD>{formatDate(task.dueDate)}</TD>;
+  }
+
+  if (columnKey === "picName") {
+    return <TD>{task.picName}</TD>;
+  }
+
+  if (columnKey === "reason") {
+    return <TD>{task.reason}</TD>;
+  }
+
+  if (columnKey === "title") {
+    return <TD>{task.title}</TD>;
+  }
+
+  if (columnKey === "createdAt") {
+    return <TD>{formatDate(task.createdAt)}</TD>;
+  }
+
+  if (columnKey === "updatedAt") {
+    return <TD>{formatDate(task.updatedAt)}</TD>;
+  }
+
+  if (columnKey === "action") {
+    return (
+      <TD>
+        <div className="flex flex-wrap gap-2">
+          <Link href={`/assessments/${task.id}/${hrefSuffix}`}>
+            <Button variant="secondary" size="sm">
+              {actionLabel}
+            </Button>
+          </Link>
+          {canDeleteTasks ? (
+            <DeleteActionButton
+              endpoint={`/api/tasks/${task.id}`}
+              label="Hapus"
+              confirmMessage={`Hapus task ${type} untuk "${task.activityName}"?`}
+            />
+          ) : null}
+        </div>
+      </TD>
+    );
+  }
+
+  if (columnKey.startsWith("custom_")) {
+    return <TD className="text-slate-400">-</TD>;
+  }
+
+  return <TD>-</TD>;
 }
 
 function MiniMetric({ label, value }: { label: string; value: number }) {

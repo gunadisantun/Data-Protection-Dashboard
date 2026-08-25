@@ -1,17 +1,25 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { ClipboardCheck, FileWarning, Globe2, Scale } from "lucide-react";
 import { DeleteActionButton } from "@/components/delete-action-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { requireViewer, toAccessScope } from "@/lib/access";
 import { listTasks } from "@/lib/data";
 import { formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 export default async function AssessmentsPage() {
-  const tasks = await listTasks();
+  const viewer = await requireViewer();
+
+  if (viewer.role === "User") {
+    redirect("/assessments/dpia");
+  }
+
+  const tasks = await listTasks(undefined, { scope: toAccessScope(viewer) });
 
   return (
     <div className="mx-auto max-w-[1180px] space-y-6">

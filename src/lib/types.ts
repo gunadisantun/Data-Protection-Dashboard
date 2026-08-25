@@ -25,7 +25,11 @@ export type AssessmentStatus = (typeof assessmentStatusValues)[number];
 export const ropaStatusValues = ["Draft", "Active", "Archived"] as const;
 export type RopaStatus = (typeof ropaStatusValues)[number];
 
-export type UserRole = "Admin" | "PIC";
+export const breachReportStatusValues = ["Draft", "Submitted", "Finalized"] as const;
+export type BreachReportStatus = (typeof breachReportStatusValues)[number];
+
+export const userRoleValues = ["MasterAdmin", "DPO", "User"] as const;
+export type UserRole = (typeof userRoleValues)[number];
 
 export type RuleInput = {
   legalBasis: LegalBasis | string;
@@ -45,16 +49,26 @@ export type RuleTrigger = {
   reason: string;
 };
 
+export type RopaTransferItem = {
+  transferPurpose: string;
+  recipients: string;
+  dataReceiverRole: string;
+  isCrossBorder: boolean;
+  destinationCountry: string;
+  exportProtectionMechanism: string;
+};
+
 export type CreateRopaPayload = {
   activityName: string;
   processDescription: string;
   departmentId: string;
-  picName: string;
-  picEmail: string;
-  controllerProcessorContacts: string;
-  dpoContact: string;
+  picName?: string;
+  picEmail?: string;
+  controllerProcessorContacts?: string;
+  dpoContact?: string;
   legalBasis: LegalBasis;
   processingPurpose: string;
+  hasTransfer: boolean;
   transferPurpose: string;
   sourceMechanism: string;
   subjectCategories: string[];
@@ -82,11 +96,12 @@ export type CreateRopaPayload = {
   riskMitigationPlan?: string;
   volumeLevel: "Small" | "Medium" | "Large";
   usesAutomatedDecisionMaking: boolean;
-  dataFlowMapping: string;
+  dataFlowMapping?: string;
   previousProcess: string;
   nextProcess: string;
   status?: RopaStatus;
   userId?: string;
+  transferItems?: RopaTransferItem[];
 };
 
 export type RopaListFilters = {

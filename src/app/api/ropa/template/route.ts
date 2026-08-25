@@ -1,30 +1,14 @@
-import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { NextResponse } from "next/server";
-import { getExcelTemplatePath } from "@/lib/excel-export";
+import { getViewerFromRequest } from "@/lib/access";
 
 export const runtime = "nodejs";
 
-export async function GET() {
-  const templatePath = getExcelTemplatePath("ropa");
+export async function GET(request: Request) {
+  const viewer = await getViewerFromRequest(request);
 
-  if (!existsSync(templatePath)) {
-    return NextResponse.json(
-      { error: "Template RoPA Excel tidak ditemukan." },
-      { status: 404 },
-    );
+  if (!viewer) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const buffer = await readFile(path.normalize(templatePath));
-
-  return new Response(new Uint8Array(buffer), {
-    headers: {
-      "Content-Type":
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition":
-        "attachment; filename*=UTF-8''RoPA%20Template.xlsx",
-      "Cache-Control": "no-store",
-    },
-  });
+  return NextResponse.redirect(new URL("/templates/ropa-template.xlsx", request.url));
 }

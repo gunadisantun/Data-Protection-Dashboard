@@ -1,36 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Privacy Bro
+
+Privacy Bro is a Next.js privacy governance dashboard for PDP compliance workflows, including RoPA, DPIA, TIA, LIA, breach reporting, self-assessment, FAQ knowledge center, and the Global Privacy Regulatory Map.
 
 ## Getting Started
 
-First, run the development server:
+Install dependencies and start the local development server:
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Common Commands
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run typecheck
+npm run lint
+npm test
+npm run build
+```
 
-## Learn More
+## Database
 
-To learn more about Next.js, take a look at the following resources:
+The app uses Supabase/Postgres with Drizzle migrations.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run db:push
+npm run db:seed
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Environment variables are documented in `.env.example`.
 
-## Deploy on Vercel
+## Windows Offline Edition
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The app can also run as a Windows desktop application with an embedded local
+database and local file storage. In this mode, it does not require Supabase or
+internet access for core workflows such as RoPA, DPIA, TIA, LIA, breach reports,
+self-assessment, FAQ data, uploads, and exports.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Development desktop mode:
+
+```bash
+npm run desktop:dev
+```
+
+Build a packaged Windows app folder:
+
+```bash
+npm run desktop:pack
+```
+
+Build a Windows installer:
+
+```bash
+npm run desktop:dist
+```
+
+Offline data is stored under the Windows application data folder when packaged.
+For development, it is stored in `.privacy-bro-offline`.
+
+Notes:
+- AI FAQ still requires an external provider key and internet access. Without a
+  key, the rest of the desktop app remains usable offline.
+- External legal reference links only open when internet access is available.
+
+## Deployment
+
+Production is deployed on Vercel and served through the configured custom domain.

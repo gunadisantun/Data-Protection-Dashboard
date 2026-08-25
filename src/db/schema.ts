@@ -1,6 +1,7 @@
 import { relations } from "drizzle-orm";
 import {
   boolean,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -15,10 +16,13 @@ export const departments = pgTable("departments", {
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
+  username: text("username").notNull().unique(),
   fullName: text("full_name").notNull(),
   email: text("email").notNull().unique(),
-  role: text("role", { enum: ["Admin", "PIC"] }).notNull(),
+  role: text("role", { enum: ["MasterAdmin", "DPO", "User"] }).notNull(),
   departmentId: text("department_id").references(() => departments.id),
+  picName: text("pic_name").notNull(),
+  picEmail: text("pic_email").notNull(),
   createdAt: text("created_at").notNull(),
 });
 
@@ -28,10 +32,42 @@ export const user = pgTable("user", {
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified").notNull(),
   image: text("image"),
-  role: text("role").notNull().default("PIC"),
+  role: text("role", { enum: ["MasterAdmin", "DPO", "User"] })
+    .notNull()
+    .default("User"),
   departmentId: text("department_id"),
   createdAt: timestamp("created_at").notNull(),
   updatedAt: timestamp("updated_at").notNull(),
+});
+
+export const governanceSettings = pgTable("governance_settings", {
+  id: text("id").primaryKey(),
+  controllerProcessorContacts: text("controller_processor_contacts").notNull(),
+  dpoContact: text("dpo_contact").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+  updatedBy: text("updated_by").references(() => users.id),
+});
+
+export const moduleColumnSettings = pgTable("module_column_settings", {
+  id: text("id").primaryKey(),
+  module: text("module", { enum: ["ropa", "dpia", "tia", "lia"] }).notNull().unique(),
+  visibleColumns: jsonb("visible_columns").$type<string[]>().notNull(),
+  customColumns: jsonb("custom_columns")
+    .$type<
+      Array<{
+        key: string;
+        label: string;
+        description: string;
+        inputType: "short_answer" | "long_answer" | "checkbox" | "dropdown";
+        options: string[];
+      }>
+    >()
+    .notNull()
+    .default([]),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+  updatedBy: text("updated_by").references(() => users.id),
 });
 
 export const session = pgTable("session", {
@@ -146,6 +182,32 @@ export const assessments = pgTable("assessments", {
   updatedAt: text("updated_at").notNull(),
 });
 
+export const riskRegisterEntries = pgTable("risk_register_entries", {
+  id: text("id").primaryKey(),
+  riskId: text("risk_id").notNull(),
+  riskDescription: text("risk_description").notNull(),
+  potentialImpact: text("potential_impact").notNull(),
+  existingControl: text("existing_control").notNull(),
+  riskLevel: text("risk_level", { enum: ["Low", "Medium", "High"] }).notNull(),
+  recommendedAction: text("recommended_action").notNull(),
+  riskOwner: text("risk_owner").notNull(),
+  targetDate: text("target_date").notNull(),
+  status: text("status", { enum: ["Open", "In Progress", "Closed"] }).notNull(),
+  remarks: text("remarks").notNull().default(""),
+  sourceAssessmentId: text("source_assessment_id").references(() => assessments.id, {
+    onDelete: "set null",
+  }),
+  sourceRopaId: text("source_ropa_id").references(() => ropaActivities.id, {
+    onDelete: "set null",
+  }),
+  departmentId: text("department_id").references(() => departments.id, {
+    onDelete: "set null",
+  }),
+  activityName: text("activity_name").notNull().default(""),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
 export const auditEvents = pgTable("audit_events", {
   id: text("id").primaryKey(),
   actorId: text("actor_id").references(() => users.id),
@@ -156,10 +218,250 @@ export const auditEvents = pgTable("audit_events", {
   createdAt: text("created_at").notNull(),
 });
 
+export const breachReports = pgTable("breach_reports", {
+  id: text("id").primaryKey(),
+  reportNumber: text("report_number").notNull().unique(),
+  title: text("title").notNull(),
+  departmentId: text("department_id").references(() => departments.id, {
+    onDelete: "set null",
+  }),
+  status: text("status", { enum: ["Draft", "Submitted", "Finalized"] })
+    .notNull()
+    .default("Draft"),
+  answers: jsonb("answers").$type<Record<string, string | string[]>>().notNull(),
+  reportedBy: text("reported_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  finalizedBy: text("finalized_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  finalizedAt: text("finalized_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const selfAssessments = pgTable("self_assessments", {
+  id: text("id").primaryKey(),
+  assessmentNumber: text("assessment_number").notNull().unique(),
+  title: text("title").notNull(),
+  departmentId: text("department_id").references(() => departments.id, {
+    onDelete: "set null",
+  }),
+  status: text("status", { enum: ["Draft", "Submitted", "Finalized"] })
+    .notNull()
+    .default("Draft"),
+  answers: jsonb("answers")
+    .$type<
+      Record<
+        string,
+        {
+          answer: string;
+          note: string;
+          pic: string;
+          priority: string;
+          evidenceFiles?: Array<{
+            id: string;
+            fileName: string;
+            mimeType: string;
+            fileSize: number;
+            storageBucket: string;
+            storagePath: string;
+            uploadedAt: string;
+            uploadedBy?: string | null;
+          }>;
+        }
+      >
+    >()
+    .notNull(),
+  actionPlan: jsonb("action_plan")
+    .$type<
+      Array<{
+        id: string;
+        source: string;
+        questionId: string;
+        finding: string;
+        practicalRisk: string;
+        followUp: string;
+        owner: string;
+        targetDate: string;
+        status: string;
+        priority: string;
+        note: string;
+      }>
+    >()
+    .notNull(),
+  dataMap: jsonb("data_map")
+    .$type<
+      Array<{
+        id: string;
+        activityName: string;
+        subjectCategory: string;
+        personalDataType: string;
+        hasSpecificData: string;
+        dataSource: string;
+        processingPurpose: string;
+        lawfulBasis: string;
+        storageLocation: string;
+        accessParties: string;
+        recipientSharing: string;
+        vendorProcessor: string;
+        crossBorderCloud: string;
+        retention: string;
+        securityControl: string;
+        unitPic: string;
+        notes: string;
+      }>
+    >()
+    .notNull()
+    .default([]),
+  createdBy: text("created_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  finalizedBy: text("finalized_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  finalizedAt: text("finalized_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const faqCategories = pgTable("faq_categories", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  scope: text("scope").notNull().default(""),
+  displayOrder: integer("display_order").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const faqEntries = pgTable("faq_entries", {
+  id: text("id").primaryKey(),
+  categoryId: text("category_id")
+    .notNull()
+    .references(() => faqCategories.id, { onDelete: "cascade" }),
+  question: text("question").notNull(),
+  answer: text("answer").notNull(),
+  legalBasis: text("legal_basis").notNull().default(""),
+  benchmarkSupport: text("benchmark_support").notNull().default(""),
+  status: text("status").notNull().default(""),
+  displayOrder: integer("display_order").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+  createdBy: text("created_by").references(() => users.id),
+  updatedBy: text("updated_by").references(() => users.id),
+});
+
+export const faqReferences = pgTable("faq_references", {
+  id: text("id").primaryKey(),
+  groupName: text("group_name").notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull().default(""),
+  url: text("url").notNull(),
+  fileName: text("file_name").notNull().default(""),
+  mimeType: text("mime_type").notNull().default("application/pdf"),
+  fileSize: integer("file_size").notNull().default(0),
+  storageBucket: text("storage_bucket").notNull().default(""),
+  storagePath: text("storage_path").notNull().default(""),
+  fileContentBase64: text("file_content_base64").notNull().default(""),
+  displayOrder: integer("display_order").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const sopDocuments = pgTable("sop_documents", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  category: text("category").notNull(),
+  summary: text("summary").notNull().default(""),
+  fileName: text("file_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  fileSize: integer("file_size").notNull(),
+  storageBucket: text("storage_bucket").notNull(),
+  storagePath: text("storage_path").notNull(),
+  uploadedBy: text("uploaded_by")
+    .notNull()
+    .references(() => users.id, { onDelete: "restrict" }),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const knowledgeChunks = pgTable("knowledge_chunks", {
+  id: text("id").primaryKey(),
+  sourceType: text("source_type", { enum: ["FAQ", "REFERENCE", "SOP"] }).notNull(),
+  sourceId: text("source_id").notNull(),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  url: text("url"),
+  metadata: jsonb("metadata").$type<Record<string, string | number | boolean | null>>(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const privacyMapOverrides = pgTable("privacy_map_overrides", {
+  id: text("id").primaryKey(),
+  jurisdictionId: text("jurisdiction_id").notNull().unique(),
+  patch: jsonb("patch")
+    .$type<Record<string, unknown>>()
+    .notNull()
+    .default({}),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+  updatedBy: text("updated_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+});
+
+export const regulatoryUpdates = pgTable("regulatory_updates", {
+  id: text("id").primaryKey(),
+  country: text("country").notNull(),
+  iso2: text("iso2").notNull(),
+  iso3: text("iso3").notNull(),
+  region: text("region").notNull(),
+  category: text("category").notNull(),
+  requirementType: text("requirement_type").notNull(),
+  riskLevel: text("risk_level", {
+    enum: ["Low", "Medium", "High", "Critical", "Not Assessed"],
+  }).notNull(),
+  title: text("title").notNull(),
+  summary: text("summary").notNull(),
+  keyChange: text("key_change").notNull(),
+  businessImpact: text("business_impact").notNull(),
+  sourceName: text("source_name").notNull(),
+  sourceUrl: text("source_url").notNull(),
+  sourceLastUpdated: text("source_last_updated"),
+  sourceCheckedAt: text("source_checked_at").notNull(),
+  aiConfidence: integer("ai_confidence"),
+  reviewStatus: text("review_status", {
+    enum: ["Draft", "Reviewed", "Published", "Rejected"],
+  }).notNull(),
+  reviewerNote: text("reviewer_note"),
+  publishedAt: text("published_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const regulatorySources = pgTable("regulatory_sources", {
+  id: text("id").primaryKey(),
+  country: text("country").notNull(),
+  iso2: text("iso2").notNull(),
+  iso3: text("iso3").notNull(),
+  region: text("region").notNull(),
+  sourceName: text("source_name").notNull(),
+  baseUrl: text("base_url").notNull(),
+  topic: text("topic").notNull(),
+  generatedUrl: text("generated_url").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
 export const departmentsRelations = relations(departments, ({ many }) => ({
   users: many(users),
   ropaActivities: many(ropaActivities),
   assessments: many(assessments),
+  riskRegisterEntries: many(riskRegisterEntries),
+  breachReports: many(breachReports),
+  selfAssessments: many(selfAssessments),
 }));
 
 export const usersRelations = relations(users, ({ one, many }) => ({
@@ -168,6 +470,12 @@ export const usersRelations = relations(users, ({ one, many }) => ({
     references: [departments.id],
   }),
   ropaActivities: many(ropaActivities),
+  faqEntriesCreated: many(faqEntries, { relationName: "faq_entries_created_by" }),
+  faqEntriesUpdated: many(faqEntries, { relationName: "faq_entries_updated_by" }),
+  sopDocuments: many(sopDocuments),
+  breachReports: many(breachReports),
+  selfAssessments: many(selfAssessments),
+  privacyMapOverrides: many(privacyMapOverrides),
 }));
 
 export const ropaRelations = relations(ropaActivities, ({ one, many }) => ({
@@ -180,6 +488,7 @@ export const ropaRelations = relations(ropaActivities, ({ one, many }) => ({
     references: [users.id],
   }),
   assessments: many(assessments),
+  riskRegisterEntries: many(riskRegisterEntries),
 }));
 
 export const assessmentsRelations = relations(assessments, ({ one }) => ({
@@ -190,5 +499,85 @@ export const assessmentsRelations = relations(assessments, ({ one }) => ({
   department: one(departments, {
     fields: [assessments.departmentId],
     references: [departments.id],
+  }),
+}));
+
+export const riskRegisterRelations = relations(riskRegisterEntries, ({ one }) => ({
+  assessment: one(assessments, {
+    fields: [riskRegisterEntries.sourceAssessmentId],
+    references: [assessments.id],
+  }),
+  ropa: one(ropaActivities, {
+    fields: [riskRegisterEntries.sourceRopaId],
+    references: [ropaActivities.id],
+  }),
+  department: one(departments, {
+    fields: [riskRegisterEntries.departmentId],
+    references: [departments.id],
+  }),
+}));
+
+export const breachReportsRelations = relations(breachReports, ({ one }) => ({
+  department: one(departments, {
+    fields: [breachReports.departmentId],
+    references: [departments.id],
+  }),
+  reporter: one(users, {
+    fields: [breachReports.reportedBy],
+    references: [users.id],
+  }),
+  finalizer: one(users, {
+    fields: [breachReports.finalizedBy],
+    references: [users.id],
+  }),
+}));
+
+export const selfAssessmentsRelations = relations(selfAssessments, ({ one }) => ({
+  department: one(departments, {
+    fields: [selfAssessments.departmentId],
+    references: [departments.id],
+  }),
+  creator: one(users, {
+    fields: [selfAssessments.createdBy],
+    references: [users.id],
+  }),
+  finalizer: one(users, {
+    fields: [selfAssessments.finalizedBy],
+    references: [users.id],
+  }),
+}));
+
+export const faqCategoriesRelations = relations(faqCategories, ({ many }) => ({
+  entries: many(faqEntries),
+}));
+
+export const faqEntriesRelations = relations(faqEntries, ({ one }) => ({
+  category: one(faqCategories, {
+    fields: [faqEntries.categoryId],
+    references: [faqCategories.id],
+  }),
+  creator: one(users, {
+    fields: [faqEntries.createdBy],
+    references: [users.id],
+    relationName: "faq_entries_created_by",
+  }),
+  updater: one(users, {
+    fields: [faqEntries.updatedBy],
+    references: [users.id],
+    relationName: "faq_entries_updated_by",
+  }),
+}));
+
+export const sopDocumentsRelations = relations(sopDocuments, ({ one }) => ({
+  uploader: one(users, {
+    fields: [sopDocuments.uploadedBy],
+    references: [users.id],
+  }),
+}));
+
+export const privacyMapOverridesRelations = relations(privacyMapOverrides, ({ one }) => ({
+  updater: one(users, {
+    fields: [privacyMapOverrides.updatedBy],
+    references: [users.id],
   }),
 }));

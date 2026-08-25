@@ -1,24 +1,29 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8f9ff;
+  --background: #f5f7fb;
   --foreground: #0f172a;
-  --pv-navy: #172238;
-  --pv-navy-soft: #20304d;
-  --pv-blue: #1f66f2;
-  --pv-cyan: #22d8ef;
-  --pv-purple: #b642e6;
-  --pv-magenta: #d75ecb;
-  --pv-gold: #f3bd2f;
-  --pv-coral: #df8b6b;
+  --pv-navy: #111827;
+  --pv-navy-soft: #1f2937;
+  --pv-blue: #007aff;
+  --pv-cyan: #32d2ff;
+  --pv-purple: #af52de;
+  --pv-magenta: #ff2d55;
+  --pv-gold: #ffcc00;
+  --pv-coral: #ff9500;
   --pv-panel: #ffffff;
-  --pv-muted: #eef3ff;
-  --pv-gradient: linear-gradient(135deg, #1f66f2 0%, #22d8ef 38%, #b642e6 68%, #f3bd2f 100%);
-  --pv-font-body: Inter, Arial, Helvetica, sans-serif;
-  --pv-font-ui: Roboto, Inter, Arial, Helvetica, sans-serif;
-  --pv-font-form: "Open Sans", Inter, Arial, Helvetica, sans-serif;
-  --pv-font-metric: Lato, Inter, Arial, Helvetica, sans-serif;
-  --pv-font-display: "Switzer", Inter, Arial, Helvetica, sans-serif;
+  --pv-muted: #eef2f7;
+  --pv-surface: rgba(255, 255, 255, 0.78);
+  --pv-surface-strong: rgba(255, 255, 255, 0.92);
+  --pv-border: rgba(148, 163, 184, 0.28);
+  --pv-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 22px rgba(15, 23, 42, 0.045);
+  --pv-shadow-md: 0 12px 34px rgba(15, 23, 42, 0.08);
+  --pv-gradient: linear-gradient(135deg, #007aff 0%, #32d2ff 42%, #af52de 100%);
+  --pv-font-body: var(--font-afacad), Arial, Helvetica, sans-serif;
+  --pv-font-ui: var(--font-afacad), Arial, Helvetica, sans-serif;
+  --pv-font-form: var(--font-afacad), Arial, Helvetica, sans-serif;
+  --pv-font-metric: var(--font-afacad), Arial, Helvetica, sans-serif;
+  --pv-font-display: var(--font-gabarito), Arial, Helvetica, sans-serif;
   --pv-weight-body: 400;
   --pv-weight-ui: 500;
   --pv-weight-form: 400;
@@ -43,22 +48,36 @@
 
 body {
   background:
-    linear-gradient(180deg, rgba(34, 216, 239, 0.06) 0%, rgba(248, 249, 255, 0) 240px),
+    radial-gradient(circle at 20% 0%, rgba(50, 210, 255, 0.14), transparent 30rem),
+    radial-gradient(circle at 88% 8%, rgba(175, 82, 222, 0.1), transparent 26rem),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(245, 247, 251, 0) 18rem),
     var(--background);
   color: var(--foreground);
   font-family: var(--pv-font-body);
   font-weight: var(--pv-weight-body);
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 h1,
 h2,
-h3 {
+h3,
+h4,
+h5,
+h6 {
   font-family: var(--pv-font-display);
   font-weight: var(--pv-weight-heading);
 }
 
 a {
   text-decoration: none;
+}
+
+::selection {
+  background: rgba(31, 102, 242, 0.18);
+  color: #0f172a;
 }
 
 button,
@@ -123,4 +142,16 @@ select,
     linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
+}
+
+.pv-glass {
+  background: var(--pv-surface);
+  border: 1px solid var(--pv-border);
+  box-shadow: var(--pv-shadow-sm);
+  backdrop-filter: blur(18px) saturate(160%);
+}
+
+.pv-ios-focus {
+  outline: 2px solid rgba(0, 122, 255, 0.34);
+  outline-offset: 2px;
 }

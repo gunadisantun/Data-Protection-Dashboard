@@ -1,4 +1,4 @@
-export const countryRegulationCategories = [
+﻿export const countryRegulationCategories = [
   "Khusus",
   "Parsial",
   "Tidak ada",
@@ -134,7 +134,7 @@ export const countryReferences = [
     country: "Bolivia (Plurinational State of)",
     regulation: "Belum ada UU PDP komprehensif yang berlaku. Status terakhir: Bill of Personal Data Protection",
     category: "Tidak ada",
-    source: "https://www.dlapiperdataprotection.com/guide.pdf?c=BO",
+    source: "",
   },
   {
     country: "Bosnia and Herzegovina",
@@ -170,7 +170,7 @@ export const countryReferences = [
     country: "Cambodia",
     regulation: "Article 32 of the Law on Electronic Commerce, 2019; Draft Law on Personal Data Protection",
     category: "Parsial",
-    source: "https://www.dlapiperdataprotection.com/guide.pdf?c=KH",
+    source: "",
   },
   {
     country: "Cameroon",
@@ -218,7 +218,7 @@ export const countryReferences = [
     country: "Costa Rica",
     regulation: "Law No. 8968 on the Protection of the Person Regarding the Processing of Personal Data",
     category: "Khusus",
-    source: "https://www.dlapiperdataprotection.com/index.html?c=CR&t=law",
+    source: "",
   },
   {
     country: "Croatia",
@@ -254,7 +254,7 @@ export const countryReferences = [
     country: "Democratic Republic of the Congo",
     regulation: "Digital Code 2023 (Title III on personal data protection)",
     category: "Parsial",
-    source: "https://www.dlapiperdataprotection.com/guide.pdf?c=CD",
+    source: "",
   },
   {
     country: "Denmark",
@@ -386,7 +386,7 @@ export const countryReferences = [
     country: "Honduras",
     regulation: "Law for Transparency and Access to Public Information (Decree No. 170-2006) and draft personal data protection law",
     category: "Parsial",
-    source: "https://www.dlapiperdataprotection.com/index.html?c=HN&t=law",
+    source: "",
   },
   {
     country: "Hungary",
@@ -416,7 +416,7 @@ export const countryReferences = [
     country: "Iran (Islamic Republic of)",
     regulation: "Belum ada UU PDP komprehensif yang berlaku. Status terakhir: Bill on Protection of Data and Privacy in Cyberspace",
     category: "Tidak ada",
-    source: "https://www.dlapiperdataprotection.com/guide.pdf?c=IR",
+    source: "",
   },
   {
     country: "Ireland",
@@ -662,7 +662,7 @@ export const countryReferences = [
     country: "Panama",
     regulation: "Law No. 81 of 2019 on Personal Data Protection",
     category: "Khusus",
-    source: "https://www.dlapiperdataprotection.com/guide.pdf?c=PA",
+    source: "",
   },
   {
     country: "Paraguay",
@@ -674,7 +674,7 @@ export const countryReferences = [
     country: "Peru",
     regulation: "Law No. 29733 on Personal Data Protection and Supreme Decree No. 016-2024-JUS",
     category: "Khusus",
-    source: "https://www.dlapiperdataprotection.com/index.html?c=PE&t=law",
+    source: "",
   },
   {
     country: "Philippines",
@@ -692,7 +692,7 @@ export const countryReferences = [
     country: "Portugal",
     regulation: "Law No. 58/2019 implementing the GDPR in Portugal",
     category: "Khusus",
-    source: "https://www.dlapiperdataprotection.com/index.html?c=PT&t=law",
+    source: "",
   },
   {
     country: "Qatar",
@@ -995,3 +995,4 @@ export function lookupCountryReference(country: string | null | undefined) {
 export function normalizeCountry(value: string | null | undefined) {
   return (value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "").trim();
 }
+

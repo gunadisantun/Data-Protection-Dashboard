@@ -138,6 +138,9 @@ function parseRopaRow(
   const isCrossBorder =
     destinationCountry.length > 0 && !isIndonesiaDestination(destinationCountry);
   const exportProtectionMechanism = getText(sheet, rowNumber, 19);
+  const hasTransfer = Boolean(
+    transferPurpose.trim() || recipients.trim() || destinationCountry.trim(),
+  );
 
   if (!activityName) {
     messages.push("Nama Aktivitas wajib diisi.");
@@ -186,6 +189,7 @@ function parseRopaRow(
     dpoContact: picEmail,
     legalBasis,
     processingPurpose,
+    hasTransfer,
     transferPurpose,
     sourceMechanism:
       getText(sheet, rowNumber, 12) || getText(sheet, rowNumber, 11) || "Direct collection",

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getViewerFromRequest, toAccessScope } from "@/lib/access";
 import {
   buildRopaRegistryWorkbook,
   excelFileName,
@@ -8,11 +9,18 @@ import { getDepartments, listRopaForExport } from "@/lib/data";
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
+  const viewer = await getViewerFromRequest(request);
+
+  if (!viewer) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
+  const scope = toAccessScope(viewer);
   const department = searchParams.get("department") ?? undefined;
   const risk = searchParams.get("risk") ?? undefined;
   const status = searchParams.get("status") ?? undefined;
-  const activities = await listRopaForExport({ department, risk, status });
+  const activities = await listRopaForExport({ department, risk, status }, scope);
 
   if (!activities.length) {
     return NextResponse.json(
@@ -21,7 +29,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const departments = await getDepartments();
+  const departments = await getDepartments(scope);
   const departmentName =
     department && department !== "all"
       ? departments.find((item) => item.id === department)?.name

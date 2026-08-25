@@ -1,16 +1,25 @@
+import { redirect } from "next/navigation";
 import { BarChart3, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TBody, TD, TH, THead } from "@/components/ui/table";
+import { requireViewer, toAccessScope } from "@/lib/access";
 import { getAuditEvents, getReportSummary } from "@/lib/data";
 import { formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 export default async function ReportsPage() {
+  const viewer = await requireViewer();
+
+  if (viewer.role !== "DPO") {
+    redirect("/dashboard");
+  }
+
+  const scope = toAccessScope(viewer);
   const [summary, events] = await Promise.all([
-    getReportSummary(),
-    getAuditEvents(12),
+    getReportSummary(scope),
+    getAuditEvents(12, scope),
   ]);
   const totalRisk =
     summary.riskDistribution.Low +
@@ -20,9 +29,9 @@ export default async function ReportsPage() {
   return (
     <div className="mx-auto max-w-[1180px] space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Executive Reports</h1>
+        <h1 className="text-3xl font-bold">Summary Dashboard</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Management view of aggregate compliance, risk, and task throughput.
+          Ringkasan risk, assessment, dan audit untuk seluruh unit.
         </p>
       </div>
 

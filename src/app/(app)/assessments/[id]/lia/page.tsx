@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { LiaWorkspace } from "@/components/lia-workspace";
+import { requireViewer, toAccessScope } from "@/lib/access";
 import { getAssessmentById } from "@/lib/data";
 import { buildLiaDraft, mergeSavedLiaDraft } from "@/lib/lia-draft";
 
@@ -10,8 +11,9 @@ type LiaPageProps = {
 };
 
 export default async function LiaPage({ params }: LiaPageProps) {
+  const viewer = await requireViewer();
   const { id } = await params;
-  const assessment = await getAssessmentById(id);
+  const assessment = await getAssessmentById(id, toAccessScope(viewer));
 
   if (!assessment || assessment.taskType !== "LIA") {
     notFound();

@@ -8,6 +8,7 @@ import type {
 export { lookupCountryReference } from "@/lib/country-references";
 
 export const TIA_DRAFT_NOTE_KIND = "privacyvault.tiaDraft.v1" as const;
+const TIA_TRANSFER_TASK_NOTE_KIND = "privacyvault.tiaTransfer.v1" as const;
 
 type TiaAssessment = typeof assessments.$inferSelect & {
   department: typeof departments.$inferSelect;
@@ -105,9 +106,30 @@ export type SavedTiaDraftNotes = {
   draft: TiaDraft;
 };
 
+type TiaTransferTaskNotes = {
+  kind: typeof TIA_TRANSFER_TASK_NOTE_KIND;
+  transfer: {
+    transferPurpose: string;
+    recipients: string;
+    dataReceiverRole: string;
+    isCrossBorder: boolean;
+    destinationCountry: string;
+    exportProtectionMechanism: string;
+  };
+};
+
 export function buildTiaDraft(assessment: TiaAssessment): TiaDraft {
   const activity = assessment.ropa;
-  const countryReference = lookupCountryReference(activity.destinationCountry);
+  const transferTask = parseTiaTransferTaskNotes(assessment.notes);
+  const destinationCountry =
+    transferTask?.destinationCountry || activity.destinationCountry;
+  const transferPurpose =
+    transferTask?.transferPurpose || activity.transferPurpose || activity.processingPurpose;
+  const recipient = transferTask?.recipients || activity.recipients;
+  const dataReceiverRole = transferTask?.dataReceiverRole || activity.dataReceiverRole;
+  const exportProtectionMechanism =
+    transferTask?.exportProtectionMechanism || activity.exportProtectionMechanism;
+  const countryReference = lookupCountryReference(destinationCountry);
   const generalData = activity.personalDataTypes
     .filter((type) => !isSpecificPersonalData(type))
     .join(", ");
@@ -117,13 +139,13 @@ export function buildTiaDraft(assessment: TiaAssessment): TiaDraft {
 
   const transfer: TiaTransferDetails = {
     legalInstrument:
-      activity.exportProtectionMechanism ||
+      exportProtectionMechanism ||
       activity.processorContractLink ||
       "Instrumen hukum perlu dilengkapi, misalnya kontrak, klausul PDP, SCC, atau mekanisme perlindungan transfer lain.",
-    transferPurpose: activity.processingPurpose,
-    recipient: activity.recipients || "Pihak penerima perlu dilengkapi.",
+    transferPurpose,
+    recipient: recipient || "Pihak penerima perlu dilengkapi.",
     destinationCountry:
-      activity.destinationCountry || "Negara penerima data perlu dilengkapi.",
+      destinationCountry || "Negara penerima data perlu dilengkapi.",
     destinationRegulation:
       countryReference?.regulation ||
       "Regulasi negara penerima belum tersedia di referensi dan perlu dikaji manual.",
@@ -135,9 +157,9 @@ export function buildTiaDraft(assessment: TiaAssessment): TiaDraft {
     personalDataSpecific:
       specificData ||
       "Tidak ada Data Pribadi Spesifik yang terdeteksi otomatis dari RoPA.",
-    transferMechanism: activity.transferMechanism || "Tidak Diketahui",
+    transferMechanism: dataReceiverRole || activity.transferMechanism || "Tidak Diketahui",
     protectionMechanism:
-      activity.exportProtectionMechanism ||
+      exportProtectionMechanism ||
       activity.technicalMeasures ||
       "Tidak diketahui",
     recipientControls:
@@ -164,7 +186,7 @@ export function buildTiaDraft(assessment: TiaAssessment): TiaDraft {
       dpo: "Pejabat Pelindung Data Pribadi",
       date: formatIndonesianDate(new Date()),
       responsiblePerson: `${activity.picName} (${activity.picEmail})`,
-      relatedUnits: [assessment.department.name, activity.recipients]
+      relatedUnits: [assessment.department.name, recipient]
         .filter(Boolean)
         .join(", "),
     },
@@ -173,6 +195,28 @@ export function buildTiaDraft(assessment: TiaAssessment): TiaDraft {
     risks: [],
     evaluation: emptyEvaluation(),
   });
+}
+
+function parseTiaTransferTaskNotes(notes: string | null) {
+  if (!notes?.trim()) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(notes) as Partial<TiaTransferTaskNotes>;
+
+    if (
+      parsed.kind === TIA_TRANSFER_TASK_NOTE_KIND &&
+      parsed.transfer &&
+      typeof parsed.transfer.destinationCountry === "string"
+    ) {
+      return parsed.transfer;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
 }
 
 export function recalculateTiaDraft(draft: TiaDraft): TiaDraft {

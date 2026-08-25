@@ -16,6 +16,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { defaultFieldHelp, Label } from "@/components/ui/form";
 import { countryReferences } from "@/lib/country-references";
 import {
   lookupCountryReference,
@@ -738,24 +739,29 @@ function FieldInput({
   value,
   onChange,
   list,
+  help,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   list?: string;
+  help?: string;
 }) {
   return (
-    <label className="block">
-      <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+    <div className="block">
+      <Label
+        className="text-[11px] font-bold uppercase tracking-wide text-slate-500"
+        help={help ?? defaultFieldHelp(label)}
+      >
         {label}
-      </span>
+      </Label>
       <input
         list={list}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="mt-2 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
       />
-    </label>
+    </div>
   );
 }
 
@@ -765,18 +771,23 @@ function FieldSelect({
   options,
   onChange,
   disabled = false,
+  help,
 }: {
   label: string;
   value: string;
   options: string[];
   onChange: (value: string) => void;
   disabled?: boolean;
+  help?: string;
 }) {
   return (
-    <label className="block">
-      <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+    <div className="block">
+      <Label
+        className="text-[11px] font-bold uppercase tracking-wide text-slate-500"
+        help={help ?? defaultFieldHelp(label)}
+      >
         {label}
-      </span>
+      </Label>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -794,7 +805,7 @@ function FieldSelect({
           </option>
         ))}
       </select>
-    </label>
+    </div>
   );
 }
 
@@ -803,9 +814,12 @@ function ReadOnlyLinkField({ label, value }: { label: string; value: string }) {
 
   return (
     <div className="block">
-      <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+      <Label
+        className="text-[11px] font-bold uppercase tracking-wide text-slate-500"
+        help="Gunakan tautan ini sebagai rujukan sumber regulasi atau referensi negara tujuan transfer."
+      >
         {label}
-      </span>
+      </Label>
       <div className="mt-2 min-h-20 rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-sm leading-6 text-slate-600 shadow-sm">
         {segments.length ? (
           segments.map((segment, index) =>
@@ -840,18 +854,23 @@ function FieldTextarea({
   onChange,
   minRows = 5,
   disabled = false,
+  help,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   minRows?: number;
   disabled?: boolean;
+  help?: string;
 }) {
   return (
-    <label className="block">
-      <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+    <div className="block">
+      <Label
+        className="text-[11px] font-bold uppercase tracking-wide text-slate-500"
+        help={help ?? defaultFieldHelp(label)}
+      >
         {label}
-      </span>
+      </Label>
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -864,7 +883,7 @@ function FieldTextarea({
             : "bg-white text-slate-950",
         )}
       />
-    </label>
+    </div>
   );
 }
 

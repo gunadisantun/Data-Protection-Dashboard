@@ -13,6 +13,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { defaultFieldHelp, Label } from "@/components/ui/form";
 import {
   serializeLiaDraftNotes,
   type LiaDraft,
@@ -344,23 +345,28 @@ function FieldTextarea({
   value,
   onChange,
   minRows = 5,
+  help,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   minRows?: number;
+  help?: string;
 }) {
   return (
-    <label className="block">
-      <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+    <div className="block">
+      <Label
+        className="text-[11px] font-bold uppercase tracking-wide text-slate-500"
+        help={help ?? defaultFieldHelp(label)}
+      >
         {label}
-      </span>
+      </Label>
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
         rows={minRows}
         className="mt-2 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-950 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
       />
-    </label>
+    </div>
   );
 }
