@@ -9,8 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DeleteActionButton } from "@/components/delete-action-button";
 import {
+  calculateInherentScore,
+  calculateResidualScore,
   controlEffectivenessOptions,
   friaScreeningFields,
+  riskLevelFromScore,
   specialistAssessmentTypes,
   type AiImpactDataProtection,
   type AiImpactDomain,
@@ -21,6 +24,7 @@ import {
 import type { AiImpactAssessmentDetail } from "@/lib/data";
 import type { AssessmentType } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 
 const copy = {
   en: {
@@ -61,6 +65,7 @@ const copy = {
     likelihood: "Likelihood",
     controls: "Existing controls",
     effectiveness: "Control effectiveness",
+    inherent: "Inherent risk",
     residual: "Residual risk",
     action: "Further action",
     response: "Response",
@@ -107,6 +112,7 @@ const copy = {
     likelihood: "Likelihood",
     controls: "Kontrol yang ada",
     effectiveness: "Efektivitas kontrol",
+    inherent: "Inherent risk",
     residual: "Residual risk",
     action: "Tindakan lanjutan",
     response: "Respons",
@@ -631,6 +637,13 @@ function ImpactDomainCard({
   onChange: (domain: AiImpactDomain) => void;
 }) {
   const t = copy[locale];
+  const inherentScore = calculateInherentScore(domain.severity, domain.likelihood);
+  const residualScore = calculateResidualScore(
+    inherentScore,
+    domain.controlEffectiveness,
+  );
+  const residualRiskLevel = riskLevelFromScore(residualScore);
+
   return (
     <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -640,15 +653,34 @@ function ImpactDomainCard({
           </p>
           <h3 className="mt-1 text-lg font-bold text-slate-950">{domain.domain}</h3>
         </div>
-        <Badge tone={riskTone(domain.residualRiskLevel || "Incomplete")}>
-          {t.residual}: {domain.residualScore ?? "-"} / {domain.residualRiskLevel || "-"}
+        <Badge tone={riskTone(residualRiskLevel || "Incomplete")}>
+          {t.residual}: {residualScore ?? "-"} / {residualRiskLevel || "-"}
         </Badge>
       </div>
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <TextArea label={t.negativeImpact} value={domain.potentialNegativeImpact} onChange={(value) => onChange({ ...domain, potentialNegativeImpact: value })} />
         <TextArea label={t.affectedGroup} value={domain.affectedPersonGroup} onChange={(value) => onChange({ ...domain, affectedPersonGroup: value })} />
-        <ScoreSelect label={t.severity} value={domain.severity} onChange={(value) => onChange({ ...domain, severity: value })} />
-        <ScoreSelect label={t.likelihood} value={domain.likelihood} onChange={(value) => onChange({ ...domain, likelihood: value })} />
+        <div className="lg:col-span-2">
+          <div className="mb-3 grid gap-3 rounded-3xl border border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-3">
+            <SummaryTile label={t.severity} value={domain.severity ? String(domain.severity) : "-"} />
+            <SummaryTile label={t.likelihood} value={domain.likelihood ? String(domain.likelihood) : "-"} />
+            <SummaryTile
+              label={t.inherent}
+              value={
+                inherentScore
+                  ? `${inherentScore} / ${riskLevelFromScore(inherentScore)}`
+                  : "-"
+              }
+            />
+          </div>
+          <AiImpactRiskMatrix
+            severity={domain.severity}
+            likelihood={domain.likelihood}
+            onChange={(severity, likelihood) =>
+              onChange({ ...domain, severity, likelihood })
+            }
+          />
+        </div>
         <TextArea label={t.controls} value={domain.existingControls} onChange={(value) => onChange({ ...domain, existingControls: value })} />
         <label className="text-sm font-semibold text-slate-700">
           {t.effectiveness}
@@ -674,27 +706,90 @@ function ImpactDomainCard({
   );
 }
 
-function ScoreSelect({
+function SummaryTile({
   label,
   value,
-  onChange,
 }: {
   label: string;
-  value: number | null;
-  onChange: (value: number | null) => void;
+  value: string;
 }) {
   return (
-    <label className="text-sm font-semibold text-slate-700">
-      {label}
-      <select
-        className={selectClass}
-        value={value ?? ""}
-        onChange={(event) => onChange(event.target.value ? Number(event.target.value) : null)}
-      >
-        <option value="">-</option>
-        {[1, 2, 3, 4, 5].map((option) => <option key={option} value={option}>{option}</option>)}
-      </select>
-    </label>
+    <div>
+      <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+        {label}
+      </p>
+      <p className="mt-1 text-lg font-black text-slate-950">{value}</p>
+    </div>
+  );
+}
+
+function AiImpactRiskMatrix({
+  severity,
+  likelihood,
+  onChange,
+}: {
+  severity: number | null;
+  likelihood: number | null;
+  onChange: (severity: number, likelihood: number) => void;
+}) {
+  const impactValues = [1, 2, 3, 4, 5];
+  const likelihoodValues = [5, 4, 3, 2, 1];
+  const levels = ["Low", "Medium", "High", "Critical"] as const;
+
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-white p-4">
+      <div className="mb-3 grid grid-cols-[80px_repeat(5,minmax(48px,1fr))] gap-2 text-center text-xs font-bold text-slate-500">
+        <div />
+        {impactValues.map((impact) => (
+          <div key={impact}>I{impact}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-[80px_repeat(5,minmax(48px,1fr))] gap-2">
+        {likelihoodValues.map((currentLikelihood) => (
+          <div key={currentLikelihood} className="contents">
+            <div className="flex items-center justify-center rounded-2xl bg-slate-50 px-2 text-center text-xs font-bold text-slate-500">
+              L{currentLikelihood}
+            </div>
+            {impactValues.map((currentSeverity) => {
+              const score = currentSeverity * currentLikelihood;
+              const level = riskLevelFromScore(score) || "Low";
+              const selected =
+                severity === currentSeverity && likelihood === currentLikelihood;
+
+              return (
+                <button
+                  key={`${currentSeverity}-${currentLikelihood}`}
+                  type="button"
+                  aria-label={`Impact ${currentSeverity}, Likelihood ${currentLikelihood}, ${level}`}
+                  onClick={() => onChange(currentSeverity, currentLikelihood)}
+                  className={cn(
+                    "min-h-[58px] rounded-2xl border px-2 py-2 text-center transition focus:outline-none focus:ring-2 focus:ring-blue-400",
+                    aiRiskCellClass(level),
+                    selected && "ring-2 ring-blue-600 ring-offset-2",
+                  )}
+                >
+                  <span className="block text-sm font-black">{score}</span>
+                  <span className="mt-1 block text-[10px] font-bold uppercase leading-3">
+                    {level}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 grid gap-2 text-xs font-semibold text-slate-500 sm:grid-cols-4">
+        {levels.map((level) => (
+          <div key={level} className={cn("rounded-2xl px-3 py-2", aiRiskLegendClass(level))}>
+            {level}
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-xs font-semibold leading-5 text-slate-500">
+        I = impact/severity. L = likelihood. Click a cell to set the AI impact
+        risk profile for this domain.
+      </p>
+    </div>
   );
 }
 
@@ -727,6 +822,32 @@ function FriaItemCard({
       </div>
     </div>
   );
+}
+
+function aiRiskCellClass(level: "Low" | "Medium" | "High" | "Critical") {
+  switch (level) {
+    case "Critical":
+      return "border-red-200 bg-red-100 text-red-900 hover:bg-red-200";
+    case "High":
+      return "border-orange-200 bg-orange-100 text-orange-900 hover:bg-orange-200";
+    case "Medium":
+      return "border-amber-200 bg-amber-100 text-amber-900 hover:bg-amber-200";
+    default:
+      return "border-emerald-200 bg-emerald-100 text-emerald-900 hover:bg-emerald-200";
+  }
+}
+
+function aiRiskLegendClass(level: "Low" | "Medium" | "High" | "Critical") {
+  switch (level) {
+    case "Critical":
+      return "bg-red-100 text-red-800";
+    case "High":
+      return "bg-orange-100 text-orange-800";
+    case "Medium":
+      return "bg-amber-100 text-amber-800";
+    default:
+      return "bg-emerald-100 text-emerald-800";
+  }
 }
 
 function riskTone(value: string) {
