@@ -18,14 +18,23 @@ type RopaOption = {
   status?: string;
 };
 
+type DepartmentOption = {
+  id: string;
+  name: string;
+};
+
 const copy = {
   en: {
     title: "AI Impact Assessment",
     subtitle:
       "Assess AI use cases by reusing RoPA, DPIA, LIA, and TIA context without duplicate entry.",
-    create: "Create AIIA",
+    create: "Create AI Impact Assessment",
+    createStandalone: "Create standalone",
     selectRopa: "Select RoPA activity",
+    standaloneTitle: "Standalone AI use case",
+    department: "Department",
     choose: "Choose RoPA",
+    chooseDepartment: "Choose department",
     creating: "Creating...",
     open: "Open",
     deleteConfirm: "Delete this AI Impact Assessment?",
@@ -44,9 +53,13 @@ const copy = {
     title: "AI Impact Assessment",
     subtitle:
       "Nilai penggunaan AI dengan memakai ulang konteks RoPA, DPIA, LIA, dan TIA tanpa input berulang.",
-    create: "Buat AIIA",
+    create: "Buat AI Impact Assessment",
+    createStandalone: "Buat standalone",
     selectRopa: "Pilih aktivitas RoPA",
+    standaloneTitle: "Use case AI standalone",
+    department: "Unit",
     choose: "Pilih RoPA",
+    chooseDepartment: "Pilih unit",
     creating: "Membuat...",
     open: "Buka",
     deleteConfirm: "Hapus AI Impact Assessment ini?",
@@ -66,12 +79,14 @@ const copy = {
 export function AiImpactDashboard({
   assessments,
   ropaActivities,
+  departments,
   initialRopaId,
   locale,
   canDelete,
 }: {
   assessments: AiImpactAssessmentListRow[];
   ropaActivities: RopaOption[];
+  departments: DepartmentOption[];
   initialRopaId: string;
   locale: Locale;
   canDelete: boolean;
@@ -79,6 +94,10 @@ export function AiImpactDashboard({
   const router = useRouter();
   const t = copy[locale];
   const [selectedRopaId, setSelectedRopaId] = useState(initialRopaId);
+  const [standaloneAiSystem, setStandaloneAiSystem] = useState("");
+  const [standaloneDepartmentId, setStandaloneDepartmentId] = useState(
+    departments[0]?.id ?? "",
+  );
   const [isCreating, setIsCreating] = useState(false);
   const stats = useMemo(
     () => ({
@@ -92,8 +111,8 @@ export function AiImpactDashboard({
     [assessments],
   );
 
-  async function createAssessment() {
-    if (!selectedRopaId || isCreating) {
+  async function createAssessment(mode: "ropa" | "standalone") {
+    if (isCreating) {
       return;
     }
 
@@ -101,7 +120,14 @@ export function AiImpactDashboard({
     const response = await fetch("/api/ai-impact", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ primaryRopaId: selectedRopaId }),
+      body: JSON.stringify(
+        mode === "ropa"
+          ? { primaryRopaId: selectedRopaId }
+          : {
+              aiSystem: standaloneAiSystem,
+              departmentId: standaloneDepartmentId,
+            },
+      ),
     }).catch(() => null);
 
     if (!response?.ok) {
@@ -120,15 +146,16 @@ export function AiImpactDashboard({
       <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">
-            AIIA
+            AI Impact Assessment
           </p>
           <h1 className="mt-2 text-3xl font-bold text-slate-950">{t.title}</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
             {t.subtitle}
           </p>
         </div>
-        <Card className="w-full lg:w-[520px]">
-          <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <Card className="w-full lg:w-[620px]">
+          <CardContent className="space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <label className="flex-1 text-sm font-semibold text-slate-700">
               {t.selectRopa}
               <select
@@ -144,16 +171,52 @@ export function AiImpactDashboard({
                 ))}
               </select>
             </label>
-            <Button onClick={() => void createAssessment()} disabled={!selectedRopaId || isCreating}>
+            <Button onClick={() => void createAssessment("ropa")} disabled={!selectedRopaId || isCreating}>
               <Plus className="h-4 w-4" />
               {isCreating ? t.creating : t.create}
             </Button>
+            </div>
+
+            <div className="grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-[1fr_180px_auto] sm:items-end">
+              <label className="text-sm font-semibold text-slate-700">
+                {t.standaloneTitle}
+                <input
+                  className="mt-2 h-11 w-full rounded-2xl border border-[color:var(--pv-border)] bg-white px-4 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-blue-200"
+                  value={standaloneAiSystem}
+                  onChange={(event) => setStandaloneAiSystem(event.target.value)}
+                  placeholder="e.g., Customer churn prediction"
+                />
+              </label>
+              <label className="text-sm font-semibold text-slate-700">
+                {t.department}
+                <select
+                  className="mt-2 h-11 w-full rounded-2xl border border-[color:var(--pv-border)] bg-white px-4 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-blue-200"
+                  value={standaloneDepartmentId}
+                  onChange={(event) => setStandaloneDepartmentId(event.target.value)}
+                >
+                  <option value="">{t.chooseDepartment}</option>
+                  {departments.map((department) => (
+                    <option key={department.id} value={department.id}>
+                      {department.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Button
+                variant="secondary"
+                onClick={() => void createAssessment("standalone")}
+                disabled={!standaloneAiSystem.trim() || !standaloneDepartmentId || isCreating}
+              >
+                <Plus className="h-4 w-4" />
+                {t.createStandalone}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </section>
 
       <div className="grid gap-4 md:grid-cols-4">
-        <AiImpactMetric label="Total AIIA" value={stats.total} tone="blue" />
+        <AiImpactMetric label="Total AI Impact Assessment" value={stats.total} tone="blue" />
         <AiImpactMetric label="High / Critical" value={stats.high} tone="red" />
         <AiImpactMetric label="FRIA Required" value={stats.fria} tone="yellow" />
         <AiImpactMetric label="Open" value={stats.open} tone="purple" />

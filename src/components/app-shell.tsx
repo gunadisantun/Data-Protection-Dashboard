@@ -73,7 +73,7 @@ const masterAdminNavItems: NavItem[] = [
     icon: Scale,
     assessmentType: "lia",
   },
-  { href: "/assessments/ai-impact", label: "AIIA", icon: BrainCircuit },
+  { href: "/assessments/ai-impact", label: "AI Impact Assessment", icon: BrainCircuit },
 ];
 
 const dpoNavItems: NavItem[] = [
@@ -97,7 +97,7 @@ const dpoNavItems: NavItem[] = [
     icon: Scale,
     assessmentType: "lia",
   },
-  { href: "/assessments/ai-impact", label: "AIIA", icon: BrainCircuit },
+  { href: "/assessments/ai-impact", label: "AI Impact Assessment", icon: BrainCircuit },
   { href: "/reports", label: "Summary", icon: Scale },
 ];
 
@@ -122,7 +122,7 @@ const userNavItems: NavItem[] = [
     icon: Scale,
     assessmentType: "lia",
   },
-  { href: "/assessments/ai-impact", label: "AIIA", icon: BrainCircuit },
+  { href: "/assessments/ai-impact", label: "AI Impact Assessment", icon: BrainCircuit },
 ];
 
 const faqNavItem: NavItem = {

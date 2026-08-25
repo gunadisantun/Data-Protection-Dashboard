@@ -204,14 +204,18 @@ export async function cleanupDemoSession(sessionId: string) {
         ).map((assessment) => assessment.id)
       : [];
 
-    const demoAiImpactIds = demoRopaIds.length
-      ? (
-          await tx
-            .select({ id: aiImpactAssessments.id })
-            .from(aiImpactAssessments)
-            .where(inArray(aiImpactAssessments.primaryRopaId, demoRopaIds))
-        ).map((assessment) => assessment.id)
-      : [];
+    const demoAiImpactConditions = [
+      eq(aiImpactAssessments.createdBy, userId),
+      demoRopaIds.length
+        ? inArray(aiImpactAssessments.primaryRopaId, demoRopaIds)
+        : undefined,
+    ].filter((condition) => Boolean(condition));
+    const demoAiImpactIds = (
+      await tx
+        .select({ id: aiImpactAssessments.id })
+        .from(aiImpactAssessments)
+        .where(or(...demoAiImpactConditions))
+    ).map((assessment) => assessment.id);
 
     if (demoAiImpactIds.length) {
       await tx.delete(auditEvents).where(inArray(auditEvents.entityId, demoAiImpactIds));
@@ -2484,6 +2488,104 @@ export async function createAiImpactAssessmentFromRopa(
       entityType: "ai-impact-assessment",
       entityId: id,
       message: `Created AIIA ${assessmentNumber} from RoPA ${ropa.activityName}.`,
+      createdAt: now,
+    });
+  });
+
+  return getAiImpactAssessmentById(id, scope);
+}
+
+export async function createStandaloneAiImpactAssessment(
+  payload: {
+    aiSystem: string;
+    departmentId?: string | null;
+  },
+  scope: AccessScope,
+  actorId: string,
+) {
+  await ensureDatabase();
+  const scopedDepartment = departmentForScope(scope);
+  const departmentId = scopedDepartment || payload.departmentId?.trim();
+
+  if (!departmentId) {
+    return null;
+  }
+
+  const department = await db.query.departments.findFirst({
+    where: eq(departments.id, departmentId),
+  });
+
+  if (!department || !hasScopeAccess(scope, department.id)) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  const impactDomains = buildDefaultImpactDomains();
+  const friaScreening = buildDefaultFriaScreening();
+  const friaItems = buildDefaultFriaItems();
+  const dataProtection: AiImpactDataProtection = {
+    processesPersonalData: "TBD",
+    result: "",
+  };
+  const specialistAssessment: AiImpactSpecialistAssessment = {
+    required: "TBD",
+    types: [],
+  };
+  const derived = buildAiImpactDerivedState({
+    impactDomains,
+    friaScreening,
+    friaItems,
+    dataProtection,
+    specialistAssessment,
+  });
+  const id = `aiia-${crypto.randomUUID()}`;
+  const assessmentNumber = `AIIA-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`;
+
+  await db.transaction(async (tx) => {
+    await tx.insert(aiImpactAssessments).values({
+      id,
+      assessmentNumber,
+      primaryRopaId: null,
+      relatedRopaIds: [],
+      relatedDpiaId: null,
+      relatedLiaId: null,
+      relatedTiaId: null,
+      departmentId: department.id,
+      status: "Draft",
+      approvalStatus: "Not Started",
+      ownerName: "",
+      aiSystem: payload.aiSystem.trim() || "Standalone AI Use Case",
+      businessOwner: department.name,
+      intendedPurpose: "",
+      providerDeveloper: "",
+      affectedPersons: "",
+      jurisdictions: "",
+      intendedBenefit: "",
+      foreseeableMisuse: "",
+      importedSnapshot: {},
+      provenance: {},
+      impactDomains: derived.impactDomains,
+      friaScreening,
+      friaStatus: derived.friaStatus,
+      friaItems,
+      friaCompletion: derived.friaCompletion,
+      dataProtection,
+      specialistAssessment,
+      highestResidualRisk: derived.highestResidualRisk,
+      finalDecision: derived.finalDecision,
+      createdBy: actorId,
+      updatedBy: actorId,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await tx.insert(auditEvents).values({
+      id: `audit-${crypto.randomUUID()}`,
+      actorId,
+      eventType: "aiia.created",
+      entityType: "ai-impact-assessment",
+      entityId: id,
+      message: `Created standalone AIIA ${assessmentNumber}.`,
       createdAt: now,
     });
   });

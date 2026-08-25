@@ -32,6 +32,8 @@ const copy = {
     deleteConfirm: "Delete this AI Impact Assessment?",
     overview: "Overview",
     linkedAssessments: "Linked assessments",
+    standaloneAssessment:
+      "This AI Impact Assessment is standalone. Link it to a RoPA first if you need generated DPIA, TIA, or LIA tasks.",
     context: "AI context",
     impact: "Impact domains",
     fria: "FRIA screening",
@@ -76,6 +78,8 @@ const copy = {
     deleteConfirm: "Hapus AI Impact Assessment ini?",
     overview: "Ringkasan",
     linkedAssessments: "Assessment terkait",
+    standaloneAssessment:
+      "AI Impact Assessment ini berdiri sendiri. Hubungkan ke RoPA terlebih dahulu jika perlu membuat task DPIA, TIA, atau LIA otomatis.",
     context: "Konteks AI",
     impact: "Domain dampak",
     fria: "FRIA screening",
@@ -144,6 +148,7 @@ export function AiImpactWorkspace({
   }));
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const isImportedFromRopa = Boolean(assessment.primaryRopaId);
 
   const related = useMemo(
     () => [
@@ -254,12 +259,12 @@ export function AiImpactWorkspace({
             <CardTitle>{t.context}</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
-            <TextInput label={t.aiSystem} value={form.aiSystem} onChange={(value) => setForm({ ...form, aiSystem: value })} source={t.imported} />
+            <TextInput label={t.aiSystem} value={form.aiSystem} onChange={(value) => setForm({ ...form, aiSystem: value })} source={isImportedFromRopa ? t.imported : undefined} />
             <TextInput label={t.owner} value={form.ownerName} onChange={(value) => setForm({ ...form, ownerName: value })} />
-            <TextInput label={t.businessOwner} value={form.businessOwner} onChange={(value) => setForm({ ...form, businessOwner: value })} source={t.imported} />
-            <TextInput label={t.provider} value={form.providerDeveloper} onChange={(value) => setForm({ ...form, providerDeveloper: value })} source={t.imported} />
-            <TextArea label={t.purpose} value={form.intendedPurpose} onChange={(value) => setForm({ ...form, intendedPurpose: value })} source={t.imported} />
-            <TextArea label={t.persons} value={form.affectedPersons} onChange={(value) => setForm({ ...form, affectedPersons: value })} source={t.imported} />
+            <TextInput label={t.businessOwner} value={form.businessOwner} onChange={(value) => setForm({ ...form, businessOwner: value })} source={isImportedFromRopa ? t.imported : undefined} />
+            <TextInput label={t.provider} value={form.providerDeveloper} onChange={(value) => setForm({ ...form, providerDeveloper: value })} source={isImportedFromRopa ? t.imported : undefined} />
+            <TextArea label={t.purpose} value={form.intendedPurpose} onChange={(value) => setForm({ ...form, intendedPurpose: value })} source={isImportedFromRopa ? t.imported : undefined} />
+            <TextArea label={t.persons} value={form.affectedPersons} onChange={(value) => setForm({ ...form, affectedPersons: value })} source={isImportedFromRopa ? t.imported : undefined} />
             <TextArea label={t.jurisdictions} value={form.jurisdictions} onChange={(value) => setForm({ ...form, jurisdictions: value })} />
             <TextArea label={t.benefit} value={form.intendedBenefit} onChange={(value) => setForm({ ...form, intendedBenefit: value })} />
             <TextArea label={t.misuse} value={form.foreseeableMisuse} onChange={(value) => setForm({ ...form, foreseeableMisuse: value })} />
@@ -284,8 +289,12 @@ export function AiImpactWorkspace({
                 title={assessment.primaryRopa?.activityName ?? assessment.primaryRopaId}
                 href={`/ropa/${assessment.primaryRopaId}/result`}
               />
-            ) : null}
-            {related.map((item) =>
+            ) : (
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold leading-6 text-slate-600">
+                {t.standaloneAssessment}
+              </div>
+            )}
+            {assessment.primaryRopaId ? related.map((item) =>
               item.id ? (
                 <LinkPanel
                   key={item.type}
@@ -310,7 +319,7 @@ export function AiImpactWorkspace({
                   </Button>
                 </div>
               ),
-            )}
+            ) : null}
           </CardContent>
         </Card>
       </div>

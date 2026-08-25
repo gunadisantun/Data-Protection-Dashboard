@@ -283,7 +283,7 @@ const resultText = {
     fillDpiaInApp: "Complete DPIA in App",
     fillLiaInApp: "Complete LIA in App",
     fillTiaInApp: "Complete TIA in App",
-    createAiImpact: "Create AIIA",
+    createAiImpact: "Create AI Impact Assessment",
   },
   id: {
     generateDepartmentExcel: "Generate Excel RoPA Departemen",
@@ -293,7 +293,7 @@ const resultText = {
     fillDpiaInApp: "Isi DPIA di Aplikasi",
     fillLiaInApp: "Isi LIA di Aplikasi",
     fillTiaInApp: "Isi TIA di Aplikasi",
-    createAiImpact: "Buat AIIA",
+    createAiImpact: "Buat AI Impact Assessment",
   },
 } as const satisfies Record<Locale, Record<string, string>>;
 
