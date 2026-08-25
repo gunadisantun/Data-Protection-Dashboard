@@ -249,7 +249,7 @@ export function TiaWorkspace({
             value={tiaDraft.transfer.destinationCountry}
           />
           <SummaryItem
-            label="Kategori PDP"
+            label={text.pdpCategory}
             value={tiaDraft.transfer.regulationCategory}
           />
           <div>
@@ -298,17 +298,17 @@ export function TiaWorkspace({
             onChange={(value) => updateMetadata("dpo", value)}
           />
           <FieldInput
-            label="Tanggal"
+            label={text.date}
             value={tiaDraft.metadata.date}
             onChange={(value) => updateMetadata("date", value)}
           />
           <FieldInput
-            label="Penanggung Jawab"
+            label={text.responsiblePerson}
             value={tiaDraft.metadata.responsiblePerson}
             onChange={(value) => updateMetadata("responsiblePerson", value)}
           />
           <FieldInput
-            label="Unit Terkait"
+            label={text.relatedUnits}
             value={tiaDraft.metadata.relatedUnits}
             onChange={(value) => updateMetadata("relatedUnits", value)}
           />
@@ -619,10 +619,13 @@ function TransferField({
   value: string;
   onChange: (value: string) => void;
 }) {
+  const { locale } = useI18n();
+  const text = tiaWorkspaceText[locale];
+
   if (field === "regulationCategory") {
     return (
       <FieldSelect
-        label="Jawaban"
+        label={text.answer}
         value={value}
         options={regulationCategories}
         onChange={onChange}
@@ -634,7 +637,7 @@ function TransferField({
     return (
       <>
         <FieldInput
-          label="Jawaban"
+          label={text.answer}
           value={value}
           onChange={onChange}
           list="tia-country-reference-list"
@@ -648,7 +651,7 @@ function TransferField({
     );
   }
 
-  return <FieldTextarea label="Jawaban" value={value} onChange={onChange} />;
+  return <FieldTextarea label={text.answer} value={value} onChange={onChange} />;
 }
 
 function SummaryItem({ label, value }: { label: string; value: string }) {
@@ -970,8 +973,13 @@ const tiaWorkspaceText = {
     saveDraft: "Save Draft",
     markTiaDone: "Mark TIA Completed",
     destinationCountry: "Destination Country",
+    pdpCategory: "PDP Category",
+    date: "Date",
+    responsiblePerson: "Responsible Person",
+    relatedUnits: "Related Units",
     savingTia: "Saving TIA draft...",
     dpo: "Data Protection Officer",
+    answer: "Answer",
     editModeActive: "Edit Mode Active",
     editReference: "Edit Reference",
     countryListReference: "Country List Reference",
@@ -1011,8 +1019,13 @@ const tiaWorkspaceText = {
     saveDraft: "Simpan Draft",
     markTiaDone: "Tandai TIA Selesai",
     destinationCountry: "Negara Tujuan",
+    pdpCategory: "Kategori PDP",
+    date: "Tanggal",
+    responsiblePerson: "Penanggung Jawab",
+    relatedUnits: "Unit Terkait",
     savingTia: "Menyimpan draft TIA...",
     dpo: "Pejabat Pelindung Data Pribadi",
+    answer: "Jawaban",
     editModeActive: "Mode Edit Aktif",
     editReference: "Edit Reference",
     countryListReference: "Referensi Daftar Negara",

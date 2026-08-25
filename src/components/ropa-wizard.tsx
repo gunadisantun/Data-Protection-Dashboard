@@ -14,6 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useI18n } from "@/components/language-provider";
 import {
   CheckboxRow,
   defaultFieldHelp,
@@ -213,6 +214,8 @@ export function RopaWizard({
   activePicName = "",
 }: RopaWizardProps) {
   const router = useRouter();
+  const { locale } = useI18n();
+  const text = ropaFormText[locale];
   const [step, setStep] = useState(0);
   const [data, setData] = useState<WizardData>(() => ({
     ...initialData,
@@ -225,15 +228,14 @@ export function RopaWizard({
     () => [
       {
         done: Boolean(data.departmentId),
-        label: "Select the correct business unit to assign accountability.",
+        label: text.checklistBusinessUnit,
       },
       {
         done: Boolean(
           governanceSettings?.controllerProcessorContacts?.trim() &&
             governanceSettings?.dpoContact?.trim(),
         ),
-        label:
-          "Pastikan kontak Pengendali/Prosesor dan DPO sudah diatur pada menu Account/Settings.",
+        label: text.checklistContacts,
       },
       {
         done: Boolean(
@@ -248,8 +250,7 @@ export function RopaWizard({
                 item.dataReceiverRole.trim(),
             )),
         ),
-        label:
-          "Pastikan dasar, tujuan pemrosesan, sumber data, dan parameter transfer tercatat.",
+        label: text.checklistPurpose,
       },
     ],
     [
@@ -259,6 +260,9 @@ export function RopaWizard({
       data.processingPurpose,
       data.sourceMechanism,
       data.transferItems,
+      text.checklistBusinessUnit,
+      text.checklistContacts,
+      text.checklistPurpose,
       governanceSettings?.controllerProcessorContacts,
       governanceSettings?.dpoContact,
     ],
@@ -347,7 +351,7 @@ export function RopaWizard({
         <Card>
           <CardContent className="p-5 sm:p-6 sm:pt-6">
             <div className="flex items-center justify-between gap-4 overflow-x-auto pb-1">
-              {steps.map((label, index) => (
+              {text.steps.map((label, index) => (
                 <button
                   key={label}
                   className="flex min-w-24 flex-col items-center gap-3 rounded-xl px-2 py-1 text-sm"
@@ -378,13 +382,13 @@ export function RopaWizard({
             <div className="mb-7 flex items-start justify-between gap-4">
               <div>
                 <h1 className="text-lg font-semibold">
-                  Record of Processing Activity (RoPA)
+                  {text.title}
                 </h1>
                 <p className="text-sm text-slate-500">
-                  Section {step + 1}: {sectionSubtitle(step)}
+                  {text.section} {step + 1}: {text.sectionSubtitles[step]}
                 </p>
               </div>
-              <Badge tone="blue">Draft</Badge>
+              <Badge tone="blue">{text.draft}</Badge>
             </div>
 
             {step === 0 ? (
@@ -416,16 +420,16 @@ export function RopaWizard({
                 onClick={() => setStep((current) => Math.max(0, current - 1))}
                 disabled={step === 0}
               >
-                Back
+                {text.back}
               </Button>
               {step < steps.length - 1 ? (
                 <Button onClick={() => setStep((current) => current + 1)}>
-                  Continue
+                  {text.continue}
                 </Button>
               ) : (
                 <Button onClick={submit} disabled={isSubmitting}>
                   {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  Submit and Analyze
+                  {text.submitAnalyze}
                 </Button>
               )}
             </div>
@@ -438,16 +442,19 @@ export function RopaWizard({
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15">
             <Lightbulb className="h-5 w-5" />
           </div>
-          <h2 className="mt-7 text-base font-bold">Why {steps[step]} Matters?</h2>
+          <h2 className="mt-7 text-base font-bold">
+            {text.whyTitle.replace("{{step}}", text.steps[step])}
+          </h2>
           <p className="mt-4 text-sm leading-6 text-white/90">
-            Naming and describing this activity correctly ensures transparency
-            across the organization and keeps generated obligations precise.
+            {text.whyDescription}
           </p>
         </div>
 
         <Card>
           <CardContent className="pt-5">
-            <h2 className="text-sm font-semibold text-slate-400">Guidance checklist</h2>
+            <h2 className="text-sm font-semibold text-slate-400">
+              {text.guidanceChecklist}
+            </h2>
             <div className="mt-4 space-y-4">
               {checklist.map((item) => (
                 <div key={item.label} className="flex gap-3 text-sm text-slate-600">
@@ -489,7 +496,7 @@ async function buildSubmissionError(response: Response) {
       )
       .slice(0, 4);
 
-    return details.length ? `Mohon cek kembali: ${details.join("; ")}` : fallback;
+    return details.length ? `Please check again: ${details.join("; ")}` : fallback;
   } catch {
     return fallback;
   }
@@ -516,7 +523,7 @@ function normalizeTransferItems(items: TransferItem[]) {
 }
 
 function summarizeTransferItems(items: TransferItem[]) {
-  const line = (value: string, index: number) => `Pengiriman ${index + 1}: ${value}`;
+  const line = (value: string, index: number) => `Transfer ${index + 1}: ${value}`;
   const crossBorderItems = items.filter((item) => item.isCrossBorder);
 
   return {
@@ -528,7 +535,7 @@ function summarizeTransferItems(items: TransferItem[]) {
       .map((item, index) => line(item.dataReceiverRole, index))
       .join("\n"),
     transferMechanism: items
-      .map((item, index) => line(item.dataReceiverRole || "Belum ditentukan", index))
+      .map((item, index) => line(item.dataReceiverRole || "Not specified", index))
       .join("\n"),
     destinationCountry: crossBorderItems
       .map((item, index) => line(item.destinationCountry, index))
@@ -541,29 +548,29 @@ function summarizeTransferItems(items: TransferItem[]) {
 
 function fieldLabel(field: string) {
   const labels: Record<string, string> = {
-    activityName: "Nama Aktivitas",
-    processDescription: "Deskripsi Aktivitas",
-    departmentId: "Unit Kerja",
+    activityName: "Activity Name",
+    processDescription: "Activity Description",
+    departmentId: "Department",
     controllerProcessorContacts:
-      "Nama dan Kontak Pengendali/Pengendali Bersama/Prosesor",
-    dpoContact: "Kontak DPO",
-    hasTransfer: "Apakah terdapat transfer data pribadi",
-    transferPurpose: "Tujuan Pengiriman Data Pribadi",
-    processingPurpose: "Tujuan Pemrosesan",
-    sourceMechanism: "Sumber Pengumpulan Data Pribadi",
-    subjectCategories: "Kategori Subjek Data",
-    personalDataTypes: "Jenis Data Pribadi",
-    recipients: "Pihak penerima Data Pribadi",
-    processorContractLink: "Lokasi penerima",
-    dataReceiverRole: "Jenis transfer",
-    transferMechanism: "Rincian Transfer Data Pribadi",
-    storageLocation: "Penyimpanan",
-    retentionPeriod: "Retensi",
-    technicalMeasures: "Langkah Teknis",
-    organizationalMeasures: "Langkah Organisasi",
-    destinationCountry: "Negara Transfer",
-    exportProtectionMechanism: "Mekanisme Pelindungan Ekspor",
-    dataSubjectRights: "Hak Subjek Data Pribadi",
+      "Controller / Joint Controller / Processor Name and Contact",
+    dpoContact: "DPO Contact",
+    hasTransfer: "Personal data transfer",
+    transferPurpose: "Personal Data Transfer Purpose",
+    processingPurpose: "Processing Purpose",
+    sourceMechanism: "Personal Data Collection Source",
+    subjectCategories: "Data Subject Categories",
+    personalDataTypes: "Personal Data Types",
+    recipients: "Personal Data Recipient",
+    processorContractLink: "Recipient Location",
+    dataReceiverRole: "Transfer Type",
+    transferMechanism: "Personal Data Transfer Details",
+    storageLocation: "Storage",
+    retentionPeriod: "Retention",
+    technicalMeasures: "Technical Measures",
+    organizationalMeasures: "Organizational Measures",
+    destinationCountry: "Destination Country",
+    exportProtectionMechanism: "Export Protection Mechanism",
+    dataSubjectRights: "Data Subject Rights",
   };
 
   return labels[field] ?? field;
@@ -589,24 +596,27 @@ function IdentityStep({
   } | null;
   activePicName: string;
 }) {
+  const { locale } = useI18n();
+  const text = ropaFormText[locale];
+
   return (
     <div className="grid gap-5 md:grid-cols-2">
       <Field
-        label="Nama Aktivitas *"
-        help="Wajib, minimal 3 karakter. Gunakan nama yang spesifik, misalnya Payroll Karyawan, bukan Data Entry."
+        label={`${text.activityName} *`}
+        help={text.activityNameHelp}
       >
         <Input
-          placeholder="e.g., Pengelolaan Payroll Karyawan"
+          placeholder={text.activityNamePlaceholder}
           value={data.activityName}
           onChange={(event) => update("activityName", event.target.value)}
         />
       </Field>
-      <Field label="Unit Kerja *" help="Wajib pilih satu unit kerja penanggung jawab.">
+      <Field label={`${text.department} *`} help={text.departmentHelp}>
         {allowFreeDepartment ? (
           <Input
             value={data.departmentId}
             onChange={(event) => update("departmentId", event.target.value)}
-            placeholder="Contoh: Finance, HR, Marketing, Demo Unit"
+            placeholder={text.departmentPlaceholder}
           />
         ) : (
           <Select
@@ -614,7 +624,7 @@ function IdentityStep({
             onChange={(event) => update("departmentId", event.target.value)}
             disabled={lockDepartment}
           >
-            <option value="">Select Department</option>
+            <option value="">{text.selectDepartment}</option>
             {departments.map((department) => (
               <option key={department.id} value={department.id}>
                 {department.name}
@@ -624,49 +634,48 @@ function IdentityStep({
         )}
         {lockDepartment ? (
           <p className="mt-2 text-xs text-slate-500">
-            Unit kerja dikunci sesuai mapping akun user.
+            {text.departmentLocked}
           </p>
         ) : null}
       </Field>
       <Field
-        label="Person In Charge (PIC)"
+        label={text.pic}
         className="md:col-span-2"
         requirement="optional"
-        help="PIC tidak diinput per RoPA. PIC diambil dari pengaturan akun user yang membuat aktivitas."
+        help={text.picHelp}
       >
         <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
-          {activePicName.trim() || "PIC belum diatur pada profil akun."}
+          {activePicName.trim() || text.picNotSet}
         </div>
       </Field>
       <Field
-        label="Nama dan Kontak Pengendali/Pengendali Bersama/Prosesor"
+        label={text.controllerContacts}
         className="md:col-span-2"
         requirement="optional"
-        help="Dikelola oleh akun DPO/Master Admin pada pengaturan akun, dan otomatis dipakai di setiap RoPA."
+        help={text.governanceContactsHelp}
       >
         <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
           {governanceSettings?.controllerProcessorContacts?.trim() ||
-            "Belum diatur. Silakan minta DPO mengisi pada Account/Settings."}
+            text.governanceNotSet}
         </div>
       </Field>
       <Field
-        label="Kontak Pejabat/Petugas Pelindung Data Pribadi (DPO)"
+        label={text.dpoContact}
         className="md:col-span-2"
         requirement="optional"
-        help="Dikelola oleh akun DPO/Master Admin pada pengaturan akun, dan otomatis dipakai di setiap RoPA."
+        help={text.governanceContactsHelp}
       >
         <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-          {governanceSettings?.dpoContact?.trim() ||
-            "Belum diatur. Silakan minta DPO mengisi pada Account/Settings."}
+          {governanceSettings?.dpoContact?.trim() || text.governanceNotSet}
         </div>
       </Field>
       <Field
-        label="Deskripsi Aktivitas *"
+        label={`${text.activityDescription} *`}
         className="md:col-span-2"
-        help="Wajib, minimal 10 karakter. Jelaskan apa yang diproses, oleh siapa, dan konteks aktivitasnya."
+        help={text.activityDescriptionHelp}
       >
         <Textarea
-          placeholder="Explain the processing activity..."
+          placeholder={text.activityDescriptionPlaceholder}
           value={data.processDescription}
           onChange={(event) => update("processDescription", event.target.value)}
         />
@@ -682,38 +691,41 @@ function PurposeStep({
   data: WizardData;
   update: <K extends keyof WizardData>(key: K, value: WizardData[K]) => void;
 }) {
+  const { locale } = useI18n();
+  const text = ropaFormText[locale];
+
   return (
     <div className="space-y-5">
       <Field
-        label="Tujuan Pemrosesan *"
-        help="Wajib, minimal 5 karakter. Tuliskan tujuan bisnis/operasional yang jelas."
+        label={`${text.processingPurpose} *`}
+        help={text.processingPurposeHelp}
       >
         <Textarea
-          placeholder="Explain why this data is being processed..."
+          placeholder={text.processingPurposePlaceholder}
           value={data.processingPurpose}
           onChange={(event) => update("processingPurpose", event.target.value)}
         />
         <p className="mt-2 text-xs text-slate-400">
-          Describe the primary business objective for this data activity.
+          {text.processingPurposeNote}
         </p>
       </Field>
       <Field
-        label="Dasar Pemrosesan (Lawful Basis) *"
-        help="Wajib pilih salah satu dasar pemrosesan. Jika memilih Legitimate Interest, LIA otomatis dibuat."
+        label={`${text.legalBasis} *`}
+        help={text.legalBasisHelp}
       >
         <div className="grid gap-3 md:grid-cols-2">
           {[
-            ["Consent", "Subject has given explicit consent."],
-            ["Contractual", "Necessary for performance of a contract."],
-            ["Legal Obligation", "Required by applicable law."],
-            ["Legitimate Interest", "Kepentingan sah of the controller."],
+            ["Consent", text.legalBasisConsent],
+            ["Contractual", text.legalBasisContractual],
+            ["Legal Obligation", text.legalBasisLegalObligation],
+            ["Legitimate Interest", text.legalBasisLegitimateInterest],
             [
               "Vital Interest",
-              "Necessary to protect vital interests of the data subject or another person.",
+              text.legalBasisVitalInterest,
             ],
             [
               "Public Interest",
-              "Necessary for public interest or official authority duties.",
+              text.legalBasisPublicInterest,
             ],
           ].map(([value, description]) => (
             <CheckboxRow key={value}>
@@ -733,8 +745,8 @@ function PurposeStep({
         </div>
       </Field>
       <Field
-        label="Sumber Pengumpulan Data Pribadi *"
-        help="Wajib. Jelaskan sumber pengumpulan data, misalnya form, CRM, HRIS, vendor, API, atau kanal lainnya."
+        label={`${text.sourceMechanism} *`}
+        help={text.sourceMechanismHelp}
       >
         <Input
           value={data.sourceMechanism}
@@ -757,6 +769,8 @@ function DataDetailsStep({
   ) => void;
   update: <K extends keyof WizardData>(key: K, value: WizardData[K]) => void;
 }) {
+  const { locale } = useI18n();
+  const text = ropaFormText[locale];
   const [customSubjectCategory, setCustomSubjectCategory] = useState("");
   const [customGeneralData, setCustomGeneralData] = useState("");
   const [customSpecificData, setCustomSpecificData] = useState("");
@@ -792,7 +806,7 @@ function DataDetailsStep({
 
   return (
     <div className="space-y-5">
-      <Field label="Kategori Subjek Data" requirement="required">
+      <Field label={text.subjectCategories} requirement="required">
         <div className="grid gap-3 md:grid-cols-3">
           {subjectCategoryOptions.map((item) => (
             <CheckboxRow key={item}>
@@ -810,7 +824,7 @@ function DataDetailsStep({
           <Input
             value={customSubjectCategory}
             onChange={(event) => setCustomSubjectCategory(event.target.value)}
-            placeholder="Tambah kategori subjek data lain..."
+            placeholder={text.addSubjectCategoryPlaceholder}
           />
           <Button
             variant="secondary"
@@ -822,7 +836,7 @@ function DataDetailsStep({
               )
             }
           >
-            Tambah
+            {text.add}
           </Button>
         </div>
         {customSubjectCategories.length ? (
@@ -842,10 +856,9 @@ function DataDetailsStep({
       </Field>
 
       <div className="grid gap-5 xl:grid-cols-2">
-        <Field label="Data Pribadi Umum" requirement="conditional">
+        <Field label={text.generalPersonalData} requirement="conditional">
           <p className="mb-3 text-xs leading-5 text-slate-500">
-            Mengacu pada data pribadi yang bersifat umum, termasuk identitas dasar
-            dan data yang bila dikombinasikan dapat mengidentifikasi seseorang.
+            {text.generalPersonalDataHelp}
           </p>
           <div className="grid gap-3">
             {generalPersonalDataOptions.map((item) => (
@@ -863,12 +876,12 @@ function DataDetailsStep({
           <div className="mt-3 flex flex-col gap-2 md:flex-row">
             <div className="flex-1">
               <Label className="mb-2 block text-[11px] text-slate-500">
-                Data Pribadi Umum Lainnya
+                {text.otherGeneralPersonalData}
               </Label>
               <Input
                 value={customGeneralData}
                 onChange={(event) => setCustomGeneralData(event.target.value)}
-                placeholder="Tulis Data Pribadi Umum lainnya..."
+                placeholder={text.otherGeneralPersonalDataPlaceholder}
               />
             </div>
             <Button
@@ -882,16 +895,14 @@ function DataDetailsStep({
                 )
               }
             >
-              Tambah
+              {text.add}
             </Button>
           </div>
         </Field>
 
-        <Field label="Data Pribadi Spesifik" requirement="conditional">
+        <Field label={text.specificPersonalData} requirement="conditional">
           <p className="mb-3 text-xs leading-5 text-slate-500">
-            Data pribadi yang bersifat spesifik meliputi kesehatan, biometrik,
-            genetika, catatan kejahatan, data anak, dan data keuangan pribadi.
-            Data spesifik lainnya ditulis manual di kolom bawah.
+            {text.specificPersonalDataHelp}
           </p>
           <div className="grid gap-3">
             {specificPersonalDataOptions.map((item) => (
@@ -909,12 +920,12 @@ function DataDetailsStep({
           <div className="mt-3 flex flex-col gap-2 md:flex-row">
             <div className="flex-1">
               <Label className="mb-2 block text-[11px] text-slate-500">
-                Data Pribadi Spesifik Lainnya
+                {text.otherSpecificPersonalData}
               </Label>
               <Input
                 value={customSpecificData}
                 onChange={(event) => setCustomSpecificData(event.target.value)}
-                placeholder="Tulis Data Pribadi Spesifik lainnya..."
+                placeholder={text.otherSpecificPersonalDataPlaceholder}
               />
             </div>
             <Button
@@ -928,7 +939,7 @@ function DataDetailsStep({
                 )
               }
             >
-              Tambah
+              {text.add}
             </Button>
           </div>
         </Field>
@@ -937,7 +948,7 @@ function DataDetailsStep({
       {customPersonalDataTypes.length ? (
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
           <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
-            Data pribadi tambahan
+            {text.additionalPersonalData}
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             {customPersonalDataTypes.map((item) => (
@@ -954,8 +965,7 @@ function DataDetailsStep({
         </div>
       ) : null}
       <p className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-blue-800">
-        Minimal pilih satu kategori subjek data dan satu jenis data pribadi. Data
-        spesifik tidak wajib jika aktivitas hanya memproses data pribadi umum.
+        {text.dataDetailsMinimum}
       </p>
     </div>
   );
@@ -968,6 +978,8 @@ function TransferStep({
   data: WizardData;
   update: <K extends keyof WizardData>(key: K, value: WizardData[K]) => void;
 }) {
+  const { locale } = useI18n();
+  const text = ropaFormText[locale];
   const transferItems = data.transferItems.length
     ? data.transferItems
     : [createTransferItem()];
@@ -1031,9 +1043,9 @@ function TransferStep({
   return (
     <div className="space-y-5">
       <Field
-        label="Apakah terdapat transfer data pribadi?"
+        label={text.hasTransfer}
         requirement="required"
-        help="Pilih Ya jika ada pengiriman/berbagi data pribadi ke pihak lain. Jika Tidak, kolom transfer lanjutan tidak ditampilkan."
+        help={text.hasTransferHelp}
       >
         <div className="grid gap-3 md:grid-cols-2">
           <CheckboxRow>
@@ -1044,7 +1056,7 @@ function TransferStep({
               checked={data.hasTransfer}
               onChange={() => updateHasTransfer(true)}
             />
-            <span className="font-semibold">Ya</span>
+            <span className="font-semibold">{text.yes}</span>
           </CheckboxRow>
           <CheckboxRow>
             <input
@@ -1054,15 +1066,14 @@ function TransferStep({
               checked={!data.hasTransfer}
               onChange={() => updateHasTransfer(false)}
             />
-            <span className="font-semibold">Tidak</span>
+            <span className="font-semibold">{text.no}</span>
           </CheckboxRow>
         </div>
       </Field>
 
       {!data.hasTransfer ? (
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
-          Tidak ada transfer data pribadi pada aktivitas ini. Field rincian transfer
-          tidak perlu diisi.
+          {text.noTransferMessage}
         </div>
       ) : (
         <div className="space-y-4">
@@ -1080,7 +1091,7 @@ function TransferStep({
 
           <Button type="button" variant="secondary" onClick={addTransferItem}>
             <Plus className="h-4 w-4" />
-            Tambah Pengiriman
+            {text.addTransfer}
           </Button>
         </div>
       )}
@@ -1107,27 +1118,28 @@ function TransferItemCard({
   onCrossBorderChange: (itemId: string, enabled: boolean) => void;
   onRemove: (itemId: string) => void;
 }) {
+  const { locale } = useI18n();
+  const text = ropaFormText[locale];
   const countryReference = lookupCountryReference(item.destinationCountry);
   const sourceLinks = splitSourceLinks(countryReference?.source);
   const protectionPlaceholder =
     countryReference?.category === "Khusus"
-      ? "Contoh: DPA/SCC/vendor clause; verifikasi kecukupan safeguard"
+      ? text.protectionPlaceholderAdequate
       : countryReference?.category === "Parsial"
-        ? "Contoh: SCC + TIA mitigation + contractual safeguards"
+        ? text.protectionPlaceholderPartial
         : countryReference?.category === "Tidak ada"
-          ? "Contoh: SCC + enhanced due diligence + DPO approval"
-          : "SCCs, adequacy, consent, DPA, atau mekanisme lain...";
+          ? text.protectionPlaceholderNone
+          : text.protectionPlaceholderDefault;
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-5 flex items-start justify-between gap-4">
         <div>
           <h3 className="text-base font-semibold text-slate-950">
-            Pengiriman Data Pribadi {index + 1}
+            {text.transferBlock} {index + 1}
           </h3>
           <p className="mt-1 text-sm text-slate-500">
-            Isi satu penerima atau tujuan pengiriman per blok agar analisis TIA lebih
-            rapi.
+            {text.transferBlockHelp}
           </p>
         </div>
         {canRemove ? (
@@ -1138,15 +1150,15 @@ function TransferItemCard({
             onClick={() => onRemove(item.id)}
           >
             <Trash2 className="h-4 w-4" />
-            Hapus
+            {text.delete}
           </Button>
         ) : null}
       </div>
 
       <div className="grid gap-5 md:grid-cols-2">
         <Field
-          label="Tujuan Pengiriman Data Pribadi *"
-          help="Wajib. Isi tujuan pengiriman/berbagi data pribadi."
+          label={`${text.transferPurpose} *`}
+          help={text.transferPurposeHelp}
           className="md:col-span-2"
         >
           <Textarea
@@ -1154,28 +1166,28 @@ function TransferItemCard({
             onChange={(event) =>
               onChange(item.id, "transferPurpose", event.target.value)
             }
-            placeholder="Contoh: verifikasi vendor, payroll processor, pelaporan regulator."
+            placeholder={text.transferPurposePlaceholder}
           />
         </Field>
-        <Field label="Pihak penerima *" help="Wajib. Isi pihak yang menerima data pribadi.">
+        <Field label={`${text.recipient} *`} help={text.recipientHelp}>
           <Input
             value={item.recipients}
             onChange={(event) => onChange(item.id, "recipients", event.target.value)}
-            placeholder="Vendor A, Partner B, regulator..."
+            placeholder={text.recipientPlaceholder}
           />
         </Field>
-        <Field label="Jenis transfer *" help="Wajib. Pilih jenis transfer yang paling sesuai.">
+        <Field label={`${text.transferType} *`} help={text.transferTypeHelp}>
           <Select
             value={item.dataReceiverRole}
             onChange={(event) =>
               onChange(item.id, "dataReceiverRole", event.target.value)
             }
           >
-            <option value="">Pilih jenis transfer</option>
+            <option value="">{text.selectTransferType}</option>
             <option value="Internal Sharing">Internal Sharing</option>
             <option value="Processor/Vendor">Processor/Vendor</option>
             <option value="Pengendali Data Pribadi Lain">
-              Pengendali Data Pribadi Lain
+              {text.otherController}
             </option>
             <option value="Joint Controller">Joint Controller</option>
             <option value="Regulator">Regulator</option>
@@ -1197,7 +1209,7 @@ function TransferItemCard({
                 checked={item.isCrossBorder}
                 onChange={() => onCrossBorderChange(item.id, true)}
               />
-              <span className="font-semibold">Ya</span>
+              <span className="font-semibold">{text.yes}</span>
             </CheckboxRow>
             <CheckboxRow>
               <input
@@ -1207,7 +1219,7 @@ function TransferItemCard({
                 checked={!item.isCrossBorder}
                 onChange={() => onCrossBorderChange(item.id, false)}
               />
-              <span className="font-semibold">Tidak</span>
+              <span className="font-semibold">{text.no}</span>
             </CheckboxRow>
           </div>
         </Field>
@@ -1215,9 +1227,9 @@ function TransferItemCard({
         {item.isCrossBorder ? (
           <>
             <Field
-              label="Negara Transfer"
+              label={text.destinationCountry}
               requirement="conditional"
-              help="Wajib jika transfer luar negeri aktif. Pilih/ketik negara dari daftar referensi."
+              help={text.destinationCountryHelp}
             >
               <Input
                 list="country-reference-list"
@@ -1234,9 +1246,9 @@ function TransferItemCard({
               </datalist>
             </Field>
             <Field
-              label="Mekanisme Pelindungan Ekspor"
+              label={text.exportProtection}
               requirement="conditional"
-              help="Wajib jika transfer luar negeri aktif. Isi instrumen/safeguard transfer, misalnya SCC, DPA, consent, atau approval DPO."
+              help={text.exportProtectionHelp}
             >
               <Input
                 value={item.exportProtectionMechanism}
@@ -1250,7 +1262,7 @@ function TransferItemCard({
               {countryReference ? (
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-bold">Aturan negara tujuan:</span>
+                    <span className="font-bold">{text.destinationCountryRule}:</span>
                     <Badge tone={countryReference.category === "Khusus" ? "green" : "yellow"}>
                       {countryReference.category}
                     </Badge>
@@ -1266,7 +1278,7 @@ function TransferItemCard({
                           rel="noreferrer"
                           className="font-semibold text-blue-700 underline underline-offset-2"
                         >
-                          Sumber {sourceLinks.length > 1 ? sourceIndex + 1 : ""}
+                          {text.source} {sourceLinks.length > 1 ? sourceIndex + 1 : ""}
                         </a>
                       ))}
                     </div>
@@ -1274,16 +1286,14 @@ function TransferItemCard({
                 </div>
               ) : (
                 <div>
-                  Negara ini belum ditemukan di referensi workbook. Legal/DPO perlu
-                  melengkapi nama aturan, kategori PDP, dan sumbernya pada TIA.
+                  {text.countryReferenceMissing}
                 </div>
               )}
             </div>
           </>
         ) : (
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600 md:col-span-2">
-            Tidak ada transfer lintas negara. Kolom negara tujuan dan mekanisme
-            pelindungan ekspor tidak perlu diisi.
+            {text.noCrossBorderMessage}
           </div>
         )}
       </div>
@@ -1303,12 +1313,15 @@ function SecurityStep({
     value: string,
   ) => void;
 }) {
+  const { locale } = useI18n();
+  const text = ropaFormText[locale];
+
   return (
     <div className="grid gap-5 md:grid-cols-2">
       <Field
-        label="Penyimpanan"
+        label={text.storageLocation}
         requirement="required"
-        help="Wajib. Isi lokasi/sistem penyimpanan, misalnya Jakarta private cloud atau HRIS."
+        help={text.storageLocationHelp}
       >
         <Input
           value={data.storageLocation}
@@ -1317,9 +1330,9 @@ function SecurityStep({
         />
       </Field>
       <Field
-        label="Retensi"
+        label={text.retentionPeriod}
         requirement="required"
-        help="Wajib. Isi periode retensi, misalnya 2 tahun, 7 tahun, atau sampai consent ditarik."
+        help={text.retentionPeriodHelp}
       >
         <Input
           value={data.retentionPeriod}
@@ -1327,9 +1340,9 @@ function SecurityStep({
         />
       </Field>
       <Field
-        label="Langkah Teknis"
+        label={text.technicalMeasures}
         requirement="required"
-        help="Wajib, minimal 3 karakter. Isi kontrol teknis seperti enkripsi, RBAC, logging, masking, atau backup."
+        help={text.technicalMeasuresHelp}
       >
         <Textarea
           value={data.technicalMeasures}
@@ -1338,9 +1351,9 @@ function SecurityStep({
         />
       </Field>
       <Field
-        label="Langkah Organisasi"
+        label={text.organizationalMeasures}
         requirement="required"
-        help="Wajib, minimal 3 karakter. Isi kontrol organisasi seperti SOP, training, approval, review akses, atau vendor due diligence."
+        help={text.organizationalMeasuresHelp}
       >
         <Textarea
           value={data.organizationalMeasures}
@@ -1349,7 +1362,7 @@ function SecurityStep({
         />
       </Field>
       <Field
-        label="Hak Subjek Data Pribadi dapat dipenuhi / diakomodir"
+        label={text.dataSubjectRights}
         requirement="required"
         className="md:col-span-2"
       >
@@ -1367,17 +1380,16 @@ function SecurityStep({
           ))}
         </div>
         <p className="mt-3 text-xs leading-5 text-slate-500">
-          Centang hak yang sudah dapat dipenuhi oleh proses, kanal, atau SOP yang
-          tersedia. Pilihan ini akan masuk ke ringkasan RoPA dan draft asesmen.
+          {text.dataSubjectRightsHelp}
         </p>
       </Field>
-      <Field label="Konteks Historis - Sebelum" requirement="optional">
+      <Field label={text.previousProcess} requirement="optional">
         <Input
           value={data.previousProcess}
           onChange={(event) => update("previousProcess", event.target.value)}
         />
       </Field>
-      <Field label="Konteks Historis - Setelah" requirement="optional">
+      <Field label={text.nextProcess} requirement="optional">
         <Input
           value={data.nextProcess}
           onChange={(event) => update("nextProcess", event.target.value)}
@@ -1394,6 +1406,8 @@ function RiskAssessmentStep({
   data: WizardData;
   update: <K extends keyof WizardData>(key: K, value: WizardData[K]) => void;
 }) {
+  const { locale } = useI18n();
+  const text = ropaFormText[locale];
   const selectedCategories = highRiskCategoryOptions.filter((category) =>
     data.highRiskCategories.includes(category.id),
   );
@@ -1422,15 +1436,13 @@ function RiskAssessmentStep({
   return (
     <div className="space-y-5">
       <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
-        Bagian RoPA ini hanya mencatat hasil analisis kategori Risiko Tinggi
-        sesuai Pasal 34 ayat (2) UU PDP atau referensi ke Risk Register. Risk
-        matrix 5x5 tetap dikerjakan di workspace DPIA.
+        {text.riskIntro}
       </div>
 
       <Field
-        label="Kategori Risiko Tinggi Pasal 34 ayat (2) UU PDP"
+        label={text.highRiskCategories}
         requirement="optional"
-        help="Centang semua kategori yang relevan. Kosongkan jika hasil analisis menunjukkan tidak ada kategori Risiko Tinggi; minimal satu centang akan otomatis membuat task DPIA."
+        help={text.highRiskCategoriesHelp}
       >
         <div className="grid gap-3">
           {highRiskCategoryOptions.map((category) => (
@@ -1463,17 +1475,16 @@ function RiskAssessmentStep({
 
       {selectedCategories.length ? (
         <div className="rounded-lg border border-red-100 bg-red-50 p-4 text-sm leading-6 text-red-900">
-          <div className="font-semibold">DPIA akan dibuat otomatis</div>
+          <div className="font-semibold">{text.dpiaWillBeCreated}</div>
           <p className="mt-1 text-red-800">
-            Kategori terpilih:{" "}
+            {text.selectedCategories}:{" "}
             {selectedCategories.map((category) => category.shortLabel).join(", ")}.
-            Detail scoring dan mitigasi lanjut bisa diisi di halaman DPIA.
+            {text.dpiaDetailsHint}
           </p>
         </div>
       ) : (
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
-          Belum ada kategori Risiko Tinggi yang dicentang. Sistem tetap bisa membuat
-          LIA atau TIA jika dasar hukum atau transfer lintas negara memicunya.
+          {text.noHighRiskSelected}
         </div>
       )}
     </div>
@@ -1493,15 +1504,17 @@ function Field({
   requirement?: "required" | "optional" | "conditional";
   help?: string;
 }) {
+  const { locale } = useI18n();
+  const text = ropaFormText[locale];
   const isRequired = label.trim().endsWith("*") || requirement === "required";
   const displayLabel = label.replace(/\s*\*$/, "");
   const requirementLabel =
     requirement === "optional"
-      ? "Opsional"
+      ? text.optional
       : requirement === "conditional"
-        ? "Kondisional"
+        ? text.conditional
         : isRequired
-          ? "Wajib"
+          ? text.required
           : null;
   const badgeClass =
     requirement === "optional"
@@ -1526,16 +1539,312 @@ function Field({
   );
 }
 
-function sectionSubtitle(step: number) {
-  return [
-    "General Identity & Activity Identification",
-    "Purpose & Lawful Basis",
-    "Subject Categories & Personal Data",
-    "Recipients & Cross-Border Transfer",
-    "Retention, Security & Historical Context",
-    "Pasal 34 High-Risk Checklist",
-  ][step];
-}
+const ropaFormText = {
+  en: {
+    title: "Record of Processing Activity (RoPA)",
+    section: "Section",
+    draft: "Draft",
+    steps: ["Identity", "Purpose", "Data Details", "Transfer", "Security", "Risk"],
+    sectionSubtitles: [
+      "General Identity & Activity Identification",
+      "Purpose & Lawful Basis",
+      "Subject Categories & Personal Data",
+      "Recipients & Cross-Border Transfer",
+      "Retention, Security & Historical Context",
+      "Article 34 High-Risk Checklist",
+    ],
+    back: "Back",
+    continue: "Continue",
+    submitAnalyze: "Submit and Analyze",
+    whyTitle: "Why {{step}} Matters?",
+    whyDescription:
+      "Naming and describing this activity correctly ensures transparency across the organization and keeps generated obligations precise.",
+    guidanceChecklist: "Guidance checklist",
+    checklistBusinessUnit: "Select the correct business unit to assign accountability.",
+    checklistContacts:
+      "Make sure controller/processor and DPO contacts are set in Account/Settings.",
+    checklistPurpose:
+      "Make sure lawful basis, processing purpose, data source, and transfer parameters are recorded.",
+    activityName: "Activity Name",
+    activityNameHelp:
+      "Required, minimum 3 characters. Use a specific name, for example Employee Payroll, not Data Entry.",
+    activityNamePlaceholder: "e.g., Employee Payroll Management",
+    department: "Department",
+    departmentHelp: "Required. Select one accountable business unit.",
+    departmentPlaceholder: "Example: Finance, HR, Marketing, Demo Unit",
+    selectDepartment: "Select Department",
+    departmentLocked: "Department is locked based on the user account mapping.",
+    pic: "Person In Charge (PIC)",
+    picHelp:
+      "PIC is not entered per RoPA. It is taken from the account setting of the user creating this activity.",
+    picNotSet: "PIC has not been set in the account profile.",
+    controllerContacts: "Controller / Joint Controller / Processor Name and Contact",
+    dpoContact: "Data Protection Officer (DPO) Contact",
+    governanceContactsHelp:
+      "Managed by the DPO/Master Admin in account settings and automatically applied to every RoPA.",
+    governanceNotSet: "Not set yet. Please ask the DPO to complete it in Account/Settings.",
+    activityDescription: "Activity Description",
+    activityDescriptionHelp:
+      "Required, minimum 10 characters. Explain what is processed, by whom, and the activity context.",
+    activityDescriptionPlaceholder: "Explain the processing activity...",
+    processingPurpose: "Processing Purpose",
+    processingPurposeHelp:
+      "Required, minimum 5 characters. State a clear business or operational purpose.",
+    processingPurposePlaceholder: "Explain why this data is being processed...",
+    processingPurposeNote: "Describe the primary business objective for this data activity.",
+    legalBasis: "Lawful Basis",
+    legalBasisHelp:
+      "Required. Select one lawful basis. If Legitimate Interest is selected, an LIA will be created automatically.",
+    legalBasisConsent: "Subject has given explicit consent.",
+    legalBasisContractual: "Necessary for performance of a contract.",
+    legalBasisLegalObligation: "Required by applicable law.",
+    legalBasisLegitimateInterest: "Legitimate interest of the controller.",
+    legalBasisVitalInterest:
+      "Necessary to protect vital interests of the data subject or another person.",
+    legalBasisPublicInterest: "Necessary for public interest or official authority duties.",
+    sourceMechanism: "Personal Data Collection Source",
+    sourceMechanismHelp:
+      "Required. Explain the data source, such as form, CRM, HRIS, vendor, API, or another channel.",
+    subjectCategories: "Data Subject Categories",
+    addSubjectCategoryPlaceholder: "Add another data subject category...",
+    add: "Add",
+    generalPersonalData: "General Personal Data",
+    generalPersonalDataHelp:
+      "General personal data includes basic identity data and data that can identify a person when combined.",
+    otherGeneralPersonalData: "Other General Personal Data",
+    otherGeneralPersonalDataPlaceholder: "Write other General Personal Data...",
+    specificPersonalData: "Specific Personal Data",
+    specificPersonalDataHelp:
+      "Specific personal data includes health data, biometric data, genetic data, criminal records, children data, and personal financial data. Other specific data can be written manually below.",
+    otherSpecificPersonalData: "Other Specific Personal Data",
+    otherSpecificPersonalDataPlaceholder: "Write other Specific Personal Data...",
+    additionalPersonalData: "Additional personal data",
+    dataDetailsMinimum:
+      "Select at least one data subject category and one personal data type. Specific data is not required if the activity only processes general personal data.",
+    hasTransfer: "Is there any personal data transfer?",
+    hasTransferHelp:
+      "Choose Yes if personal data is sent or shared with another party. If No, transfer details are hidden.",
+    yes: "Yes",
+    no: "No",
+    noTransferMessage:
+      "There is no personal data transfer in this activity. Transfer detail fields do not need to be completed.",
+    addTransfer: "Add Transfer",
+    transferBlock: "Personal Data Transfer",
+    transferBlockHelp:
+      "Use one recipient or transfer purpose per block so TIA analysis stays clear.",
+    delete: "Delete",
+    transferPurpose: "Personal Data Transfer Purpose",
+    transferPurposeHelp: "Required. Describe why personal data is sent or shared.",
+    transferPurposePlaceholder:
+      "Example: vendor verification, payroll processor, regulator reporting.",
+    recipient: "Recipient",
+    recipientHelp: "Required. Enter the party receiving the personal data.",
+    recipientPlaceholder: "Vendor A, Partner B, regulator...",
+    transferType: "Transfer Type",
+    transferTypeHelp: "Required. Select the most appropriate transfer type.",
+    selectTransferType: "Select transfer type",
+    otherController: "Other Personal Data Controller",
+    destinationCountry: "Destination Country",
+    destinationCountryHelp:
+      "Required when cross-border transfer is active. Select or type a country from the reference list.",
+    exportProtection: "Export Protection Mechanism",
+    exportProtectionHelp:
+      "Required when cross-border transfer is active. Enter the transfer instrument/safeguard, such as SCC, DPA, consent, or DPO approval.",
+    protectionPlaceholderAdequate: "Example: DPA/SCC/vendor clause; verify safeguard adequacy",
+    protectionPlaceholderPartial: "Example: SCC + TIA mitigation + contractual safeguards",
+    protectionPlaceholderNone: "Example: SCC + enhanced due diligence + DPO approval",
+    protectionPlaceholderDefault: "SCCs, adequacy, consent, DPA, or another mechanism...",
+    destinationCountryRule: "Destination country rule",
+    source: "Source",
+    countryReferenceMissing:
+      "This country was not found in the workbook reference. Legal/DPO should complete the law name, PDP category, and source in the TIA.",
+    noCrossBorderMessage:
+      "There is no cross-border transfer. Destination country and export protection mechanism do not need to be completed.",
+    storageLocation: "Storage",
+    storageLocationHelp:
+      "Required. Enter the storage location/system, such as Jakarta private cloud or HRIS.",
+    retentionPeriod: "Retention",
+    retentionPeriodHelp:
+      "Required. Enter the retention period, such as 2 years, 7 years, or until consent is withdrawn.",
+    technicalMeasures: "Technical Measures",
+    technicalMeasuresHelp:
+      "Required, minimum 3 characters. Enter technical controls such as encryption, RBAC, logging, masking, or backup.",
+    organizationalMeasures: "Organizational Measures",
+    organizationalMeasuresHelp:
+      "Required, minimum 3 characters. Enter organizational controls such as SOP, training, approval, access review, or vendor due diligence.",
+    dataSubjectRights: "Data Subject Rights That Can Be Fulfilled / Accommodated",
+    dataSubjectRightsHelp:
+      "Check rights that can already be fulfilled through an available process, channel, or SOP. These selections will be included in RoPA and assessment drafts.",
+    previousProcess: "Historical Context - Previous",
+    nextProcess: "Historical Context - Next",
+    riskIntro:
+      "This RoPA section only records the analysis of high-risk processing criteria under Article 34(2) of the PDP Law or a reference to the Risk Register. The 5x5 risk matrix is completed in the DPIA workspace.",
+    highRiskCategories: "Article 34(2) PDP Law High-Risk Criteria",
+    highRiskCategoriesHelp:
+      "Check all relevant criteria. Leave blank if the analysis shows no High-Risk category; selecting at least one criterion will automatically create a DPIA task.",
+    dpiaWillBeCreated: "DPIA will be created automatically",
+    selectedCategories: "Selected categories",
+    dpiaDetailsHint:
+      " Further scoring and mitigation details can be completed in the DPIA page.",
+    noHighRiskSelected:
+      "No High-Risk criteria selected. The system can still create LIA or TIA if lawful basis or cross-border transfer triggers it.",
+    required: "Required",
+    optional: "Optional",
+    conditional: "Conditional",
+  },
+  id: {
+    title: "Record of Processing Activity (RoPA)",
+    section: "Bagian",
+    draft: "Draft",
+    steps: ["Identitas", "Tujuan", "Detail Data", "Transfer", "Keamanan", "Risiko"],
+    sectionSubtitles: [
+      "Identitas Umum & Identifikasi Aktivitas",
+      "Tujuan & Dasar Pemrosesan",
+      "Kategori Subjek & Data Pribadi",
+      "Penerima & Transfer Lintas Negara",
+      "Retensi, Keamanan & Konteks Historis",
+      "Checklist Risiko Tinggi Pasal 34",
+    ],
+    back: "Kembali",
+    continue: "Lanjut",
+    submitAnalyze: "Submit dan Analisis",
+    whyTitle: "Mengapa {{step}} Penting?",
+    whyDescription:
+      "Penamaan dan deskripsi aktivitas yang tepat menjaga transparansi organisasi dan membuat kewajiban yang dihasilkan lebih presisi.",
+    guidanceChecklist: "Checklist panduan",
+    checklistBusinessUnit: "Pilih unit kerja yang tepat untuk menetapkan akuntabilitas.",
+    checklistContacts:
+      "Pastikan kontak Pengendali/Prosesor dan DPO sudah diatur pada Account/Settings.",
+    checklistPurpose:
+      "Pastikan dasar pemrosesan, tujuan, sumber data, dan parameter transfer tercatat.",
+    activityName: "Nama Aktivitas",
+    activityNameHelp:
+      "Wajib, minimal 3 karakter. Gunakan nama yang spesifik, misalnya Payroll Karyawan, bukan Data Entry.",
+    activityNamePlaceholder: "Contoh: Pengelolaan Payroll Karyawan",
+    department: "Unit Kerja",
+    departmentHelp: "Wajib pilih satu unit kerja penanggung jawab.",
+    departmentPlaceholder: "Contoh: Finance, HR, Marketing, Demo Unit",
+    selectDepartment: "Pilih Departemen",
+    departmentLocked: "Unit kerja dikunci sesuai mapping akun user.",
+    pic: "Person In Charge (PIC)",
+    picHelp:
+      "PIC tidak diinput per RoPA. PIC diambil dari pengaturan akun user yang membuat aktivitas.",
+    picNotSet: "PIC belum diatur pada profil akun.",
+    controllerContacts: "Nama dan Kontak Pengendali/Pengendali Bersama/Prosesor",
+    dpoContact: "Kontak Pejabat/Petugas Pelindung Data Pribadi (DPO)",
+    governanceContactsHelp:
+      "Dikelola oleh akun DPO/Master Admin pada pengaturan akun, dan otomatis dipakai di setiap RoPA.",
+    governanceNotSet: "Belum diatur. Silakan minta DPO mengisi pada Account/Settings.",
+    activityDescription: "Deskripsi Aktivitas",
+    activityDescriptionHelp:
+      "Wajib, minimal 10 karakter. Jelaskan apa yang diproses, oleh siapa, dan konteks aktivitasnya.",
+    activityDescriptionPlaceholder: "Jelaskan aktivitas pemrosesan...",
+    processingPurpose: "Tujuan Pemrosesan",
+    processingPurposeHelp:
+      "Wajib, minimal 5 karakter. Tuliskan tujuan bisnis/operasional yang jelas.",
+    processingPurposePlaceholder: "Jelaskan mengapa data ini diproses...",
+    processingPurposeNote: "Jelaskan tujuan bisnis utama dari aktivitas data ini.",
+    legalBasis: "Dasar Pemrosesan (Lawful Basis)",
+    legalBasisHelp:
+      "Wajib pilih salah satu dasar pemrosesan. Jika memilih Legitimate Interest, LIA otomatis dibuat.",
+    legalBasisConsent: "Subjek Data telah memberikan persetujuan eksplisit.",
+    legalBasisContractual: "Diperlukan untuk pelaksanaan kontrak.",
+    legalBasisLegalObligation: "Diperlukan berdasarkan kewajiban hukum.",
+    legalBasisLegitimateInterest: "Kepentingan sah dari Pengendali.",
+    legalBasisVitalInterest:
+      "Diperlukan untuk melindungi kepentingan vital Subjek Data atau orang lain.",
+    legalBasisPublicInterest:
+      "Diperlukan untuk kepentingan umum atau pelaksanaan kewenangan resmi.",
+    sourceMechanism: "Sumber Pengumpulan Data Pribadi",
+    sourceMechanismHelp:
+      "Wajib. Jelaskan sumber pengumpulan data, misalnya form, CRM, HRIS, vendor, API, atau kanal lainnya.",
+    subjectCategories: "Kategori Subjek Data",
+    addSubjectCategoryPlaceholder: "Tambah kategori subjek data lain...",
+    add: "Tambah",
+    generalPersonalData: "Data Pribadi Umum",
+    generalPersonalDataHelp:
+      "Mengacu pada data pribadi yang bersifat umum, termasuk identitas dasar dan data yang bila dikombinasikan dapat mengidentifikasi seseorang.",
+    otherGeneralPersonalData: "Data Pribadi Umum Lainnya",
+    otherGeneralPersonalDataPlaceholder: "Tulis Data Pribadi Umum lainnya...",
+    specificPersonalData: "Data Pribadi Spesifik",
+    specificPersonalDataHelp:
+      "Data pribadi yang bersifat spesifik meliputi kesehatan, biometrik, genetika, catatan kejahatan, data anak, dan data keuangan pribadi. Data spesifik lainnya ditulis manual di kolom bawah.",
+    otherSpecificPersonalData: "Data Pribadi Spesifik Lainnya",
+    otherSpecificPersonalDataPlaceholder: "Tulis Data Pribadi Spesifik lainnya...",
+    additionalPersonalData: "Data pribadi tambahan",
+    dataDetailsMinimum:
+      "Minimal pilih satu kategori subjek data dan satu jenis data pribadi. Data spesifik tidak wajib jika aktivitas hanya memproses data pribadi umum.",
+    hasTransfer: "Apakah terdapat transfer data pribadi?",
+    hasTransferHelp:
+      "Pilih Ya jika ada pengiriman/berbagi data pribadi ke pihak lain. Jika Tidak, kolom transfer lanjutan tidak ditampilkan.",
+    yes: "Ya",
+    no: "Tidak",
+    noTransferMessage:
+      "Tidak ada transfer data pribadi pada aktivitas ini. Field rincian transfer tidak perlu diisi.",
+    addTransfer: "Tambah Pengiriman",
+    transferBlock: "Pengiriman Data Pribadi",
+    transferBlockHelp:
+      "Isi satu penerima atau tujuan pengiriman per blok agar analisis TIA lebih rapi.",
+    delete: "Hapus",
+    transferPurpose: "Tujuan Pengiriman Data Pribadi",
+    transferPurposeHelp: "Wajib. Isi tujuan pengiriman/berbagi data pribadi.",
+    transferPurposePlaceholder:
+      "Contoh: verifikasi vendor, payroll processor, pelaporan regulator.",
+    recipient: "Pihak penerima",
+    recipientHelp: "Wajib. Isi pihak yang menerima data pribadi.",
+    recipientPlaceholder: "Vendor A, Partner B, regulator...",
+    transferType: "Jenis transfer",
+    transferTypeHelp: "Wajib. Pilih jenis transfer yang paling sesuai.",
+    selectTransferType: "Pilih jenis transfer",
+    otherController: "Pengendali Data Pribadi Lain",
+    destinationCountry: "Negara Transfer",
+    destinationCountryHelp:
+      "Wajib jika transfer luar negeri aktif. Pilih/ketik negara dari daftar referensi.",
+    exportProtection: "Mekanisme Pelindungan Ekspor",
+    exportProtectionHelp:
+      "Wajib jika transfer luar negeri aktif. Isi instrumen/safeguard transfer, misalnya SCC, DPA, consent, atau approval DPO.",
+    protectionPlaceholderAdequate: "Contoh: DPA/SCC/vendor clause; verifikasi kecukupan safeguard",
+    protectionPlaceholderPartial: "Contoh: SCC + TIA mitigation + contractual safeguards",
+    protectionPlaceholderNone: "Contoh: SCC + enhanced due diligence + DPO approval",
+    protectionPlaceholderDefault: "SCCs, adequacy, consent, DPA, atau mekanisme lain...",
+    destinationCountryRule: "Aturan negara tujuan",
+    source: "Sumber",
+    countryReferenceMissing:
+      "Negara ini belum ditemukan di referensi workbook. Legal/DPO perlu melengkapi nama aturan, kategori PDP, dan sumbernya pada TIA.",
+    noCrossBorderMessage:
+      "Tidak ada transfer lintas negara. Kolom negara tujuan dan mekanisme pelindungan ekspor tidak perlu diisi.",
+    storageLocation: "Penyimpanan",
+    storageLocationHelp:
+      "Wajib. Isi lokasi/sistem penyimpanan, misalnya Jakarta private cloud atau HRIS.",
+    retentionPeriod: "Retensi",
+    retentionPeriodHelp:
+      "Wajib. Isi periode retensi, misalnya 2 tahun, 7 tahun, atau sampai consent ditarik.",
+    technicalMeasures: "Langkah Teknis",
+    technicalMeasuresHelp:
+      "Wajib, minimal 3 karakter. Isi kontrol teknis seperti enkripsi, RBAC, logging, masking, atau backup.",
+    organizationalMeasures: "Langkah Organisasi",
+    organizationalMeasuresHelp:
+      "Wajib, minimal 3 karakter. Isi kontrol organisasi seperti SOP, training, approval, review akses, atau vendor due diligence.",
+    dataSubjectRights: "Hak Subjek Data Pribadi dapat dipenuhi / diakomodir",
+    dataSubjectRightsHelp:
+      "Centang hak yang sudah dapat dipenuhi oleh proses, kanal, atau SOP yang tersedia. Pilihan ini akan masuk ke ringkasan RoPA dan draft asesmen.",
+    previousProcess: "Konteks Historis - Sebelum",
+    nextProcess: "Konteks Historis - Setelah",
+    riskIntro:
+      "Bagian RoPA ini hanya mencatat hasil analisis kategori Risiko Tinggi sesuai Pasal 34 ayat (2) UU PDP atau referensi ke Risk Register. Risk matrix 5x5 tetap dikerjakan di workspace DPIA.",
+    highRiskCategories: "Kategori Risiko Tinggi Pasal 34 ayat (2) UU PDP",
+    highRiskCategoriesHelp:
+      "Centang semua kategori yang relevan. Kosongkan jika hasil analisis menunjukkan tidak ada kategori Risiko Tinggi; minimal satu centang akan otomatis membuat task DPIA.",
+    dpiaWillBeCreated: "DPIA akan dibuat otomatis",
+    selectedCategories: "Kategori terpilih",
+    dpiaDetailsHint: " Detail scoring dan mitigasi lanjut bisa diisi di halaman DPIA.",
+    noHighRiskSelected:
+      "Belum ada kategori Risiko Tinggi yang dicentang. Sistem tetap bisa membuat LIA atau TIA jika dasar hukum atau transfer lintas negara memicunya.",
+    required: "Wajib",
+    optional: "Opsional",
+    conditional: "Kondisional",
+  },
+} as const;
 
 function splitSourceLinks(source: string | undefined) {
   return (source ?? "")

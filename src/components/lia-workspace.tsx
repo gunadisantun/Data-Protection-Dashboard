@@ -146,7 +146,7 @@ export function LiaWorkspace({
             disabled={saveState === "saving"}
           >
             <Download className="h-4 w-4" />
-            Generate Excel
+            {text.generateExcel}
           </Button>
           <Button
             variant="secondary"
@@ -161,7 +161,7 @@ export function LiaWorkspace({
             disabled={saveState === "saving"}
           >
             <CheckCircle2 className="h-4 w-4" />
-            Tandai LIA Selesai
+            {text.markLiaDone}
           </Button>
         </div>
       </div>
@@ -200,9 +200,9 @@ export function LiaWorkspace({
           )}
         >
           {saveState === "saved"
-            ? "Draft LIA tersimpan."
+            ? text.liaSaved
             : saveState === "error"
-              ? "Draft LIA gagal disimpan."
+              ? text.liaSaveFailed
               : text.savingLia}
         </div>
       ) : null}
@@ -242,7 +242,7 @@ export function LiaWorkspace({
                   </div>
                   <div className="grid gap-3 md:grid-cols-2">
                     <FieldTextarea
-                      label="Jawaban"
+                      label={text.answer}
                       value={row.answer}
                       onChange={(value) =>
                         updateRow(section.id, row.id, "answer", value)
@@ -274,17 +274,17 @@ export function LiaWorkspace({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-xl">Keputusan</CardTitle>
+          <CardTitle className="text-xl">{text.decision}</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-3">
           <FieldTextarea
-            label="Tanda tangan"
+            label={text.signature}
             value={liaDraft.decision.signer}
             onChange={(value) => updateDecision("signer", value)}
             minRows={3}
           />
           <FieldTextarea
-            label="Tanggal"
+            label={text.date}
             value={liaDraft.decision.date}
             onChange={(value) => updateDecision("date", value)}
             minRows={3}
@@ -300,7 +300,7 @@ export function LiaWorkspace({
 
       <div className="flex flex-wrap justify-between gap-3">
         <Link href={resultHref} className={buttonVariants({ variant: "secondary" })}>
-          Back to Results
+          {text.backToResult}
         </Link>
         <div className="flex flex-wrap gap-3">
           <Button
@@ -309,7 +309,7 @@ export function LiaWorkspace({
             disabled={saveState === "saving"}
           >
             <Download className="h-4 w-4" />
-            Generate Excel
+            {text.generateExcel}
           </Button>
           <Button
             variant="secondary"
@@ -324,7 +324,7 @@ export function LiaWorkspace({
             disabled={saveState === "saving"}
           >
             <CheckCircle2 className="h-4 w-4" />
-            Tandai LIA Selesai
+            {text.markLiaDone}
           </Button>
         </div>
       </div>
@@ -335,16 +335,32 @@ export function LiaWorkspace({
 const workspaceText = {
   en: {
     backToResult: "Back to result",
+    generateExcel: "Generate Excel",
     saveDraft: "Save Draft",
+    markLiaDone: "Mark LIA Completed",
+    liaSaved: "LIA draft saved.",
+    liaSaveFailed: "Failed to save LIA draft.",
     savingLia: "Saving LIA draft...",
+    answer: "Answer",
     notes: "Notes",
+    decision: "Decision",
+    signature: "Signature",
+    date: "Date",
     nextReviewPlan: "Next review plan",
   },
   id: {
     backToResult: "Kembali ke hasil",
+    generateExcel: "Generate Excel",
     saveDraft: "Simpan Draft",
+    markLiaDone: "Tandai LIA Selesai",
+    liaSaved: "Draft LIA tersimpan.",
+    liaSaveFailed: "Draft LIA gagal disimpan.",
     savingLia: "Menyimpan draft LIA...",
+    answer: "Jawaban",
     notes: "Catatan",
+    decision: "Keputusan",
+    signature: "Tanda tangan",
+    date: "Tanggal",
     nextReviewPlan: "Rencana reviu selanjutnya",
   },
 } as const;

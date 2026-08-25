@@ -586,7 +586,7 @@ export function DpiaWorkspace({
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <FieldInput
-            label="Kedudukan Pemilik Proses"
+            label={text.processOwnerPosition}
             value={dpiaDraft.metadata.processOwnerPosition}
             onChange={(value) => updateMetadata("processOwnerPosition", value)}
           />
@@ -596,17 +596,17 @@ export function DpiaWorkspace({
             onChange={(value) => updateMetadata("dpo", value)}
           />
           <FieldInput
-            label="Tanggal DPIA"
+            label={text.dpiaDate}
             value={dpiaDraft.metadata.date}
             onChange={(value) => updateMetadata("date", value)}
           />
           <FieldInput
-            label="Penanggung Jawab"
+            label={text.responsiblePerson}
             value={dpiaDraft.metadata.responsiblePerson}
             onChange={(value) => updateMetadata("responsiblePerson", value)}
           />
           <FieldInput
-            label="Unit Terkait"
+            label={text.relatedUnits}
             value={dpiaDraft.metadata.relatedUnits}
             onChange={(value) => updateMetadata("relatedUnits", value)}
           />
@@ -645,7 +645,7 @@ export function DpiaWorkspace({
                   </div>
                   <div className="grid gap-3 md:grid-cols-2">
                     <FieldTextarea
-                      label="Jawaban"
+                      label={text.answer}
                       value={row.answer}
                       onChange={(value) =>
                         updateRow(section.id, row.id, "answer", value)
@@ -704,7 +704,7 @@ export function DpiaWorkspace({
             ))}
           </div>
           <FieldTextarea
-            label="Uraian Risiko Tinggi"
+            label={text.highRiskExplanation}
             value={dpiaDraft.highRiskExplanation}
             onChange={(value) => updateDraftField("highRiskExplanation", value)}
             minRows={4}
@@ -1002,12 +1002,12 @@ export function DpiaWorkspace({
       <Card>
         <CardHeader>
           <CardTitle className="text-xl">
-            Kesimpulan dan Keputusan terhadap Pemrosesan Data Pribadi
+            {text.decisionTitle}
           </CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 lg:grid-cols-3">
           <FieldTextarea
-            label="Kesimpulan"
+            label={text.conclusion}
             value={dpiaDraft.conclusion}
             onChange={(value) => updateDraftField("conclusion", value)}
             minRows={5}
@@ -1019,7 +1019,7 @@ export function DpiaWorkspace({
             minRows={5}
           />
           <FieldTextarea
-            label="Ringkasan Publik"
+            label={text.publicSummary}
             value={dpiaDraft.publicSummary}
             onChange={(value) => updateDraftField("publicSummary", value)}
             minRows={5}
@@ -1035,32 +1035,32 @@ export function DpiaWorkspace({
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <FieldInput
-            label="Versi Dokumen"
+            label={text.documentVersion}
             value={dpiaDraft.signatures.version}
             onChange={(value) => updateSignature("version", value)}
           />
           <FieldInput
-            label="Tanggal"
+            label={text.date}
             value={dpiaDraft.signatures.date}
             onChange={(value) => updateSignature("date", value)}
           />
           <FieldInput
-            label="Disusun oleh"
+            label={text.preparedBy}
             value={dpiaDraft.signatures.preparedBy}
             onChange={(value) => updateSignature("preparedBy", value)}
           />
           <FieldInput
-            label="Ditinjau oleh"
+            label={text.reviewedBy}
             value={dpiaDraft.signatures.reviewedBy}
             onChange={(value) => updateSignature("reviewedBy", value)}
           />
           <FieldInput
-            label="Disetujui oleh"
+            label={text.approvedBy}
             value={dpiaDraft.signatures.approvedBy}
             onChange={(value) => updateSignature("approvedBy", value)}
           />
           <FieldInput
-            label="Diketahui oleh"
+            label={text.acknowledgedBy}
             value={dpiaDraft.signatures.acknowledgedBy}
             onChange={(value) => updateSignature("acknowledgedBy", value)}
           />
@@ -1345,7 +1345,7 @@ function ExistingTreatmentFields({
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <FieldInput
-        label="Nama Kontrol"
+        label={copy.controlName}
         value={treatment.name}
         onChange={(value) => onChange({ name: value })}
       />
@@ -1355,7 +1355,7 @@ function ExistingTreatmentFields({
         onChange={(value) => onChange({ owner: value })}
       />
       <FieldTextarea
-        label="Deskripsi Existing Treatment"
+        label={copy.existingTreatmentDescriptionLabel}
         value={treatment.description}
         onChange={(value) => onChange({ description: value })}
         minRows={4}
@@ -1396,7 +1396,7 @@ function TreatmentPlanFields({
         minRows={4}
       />
       <FieldTextarea
-        label="Expected Effect"
+        label={copy.expectedEffect}
         value={plan.expectedEffect}
         onChange={(value) => onChange({ expectedEffect: value })}
         minRows={4}
@@ -1407,7 +1407,7 @@ function TreatmentPlanFields({
         onChange={(value) => onChange({ owner: value })}
       />
       <FieldInput
-        label="Due Date"
+        label={copy.dueDate}
         value={plan.dueDate}
         onChange={(value) => onChange({ dueDate: value })}
       />
@@ -1820,8 +1820,14 @@ const dpiaWorkspaceText = {
     dpiaSaveFailed: "Failed to save DPIA draft.",
     savingDpia: "Saving DPIA draft...",
     dpo: "Data Protection Officer",
+    processOwnerPosition: "Process Owner Position",
+    dpiaDate: "DPIA Date",
+    responsiblePerson: "Responsible Person",
+    relatedUnits: "Related Units",
+    answer: "Answer",
     notes: "Notes",
     highRiskPotential: "High-Risk Processing Indicators",
+    highRiskExplanation: "High-Risk Explanation",
     riskMatrixIntro:
       "Add risks manually, document treatments, assess residual risk with the matrix, then choose the expected target risk.",
     addRisk: "Add Risk",
@@ -1855,9 +1861,22 @@ const dpiaWorkspaceText = {
     addRiskToStart:
       "Add a risk to start completing treatments, residual risk, and target risk.",
     monitoringPlan: "Monitoring Review and Plan",
+    decisionTitle: "Conclusion and Decision on Personal Data Processing",
+    conclusion: "Conclusion",
+    publicSummary: "Public Summary",
+    documentVersion: "Document Version",
+    date: "Date",
+    preparedBy: "Prepared by",
+    reviewedBy: "Reviewed by",
+    approvedBy: "Approved by",
+    acknowledgedBy: "Acknowledged by",
     delete: "Delete",
     effectivenessNote: "Effectiveness Note",
     actionPlan: "Action Plan",
+    controlName: "Control Name",
+    existingTreatmentDescriptionLabel: "Existing Treatment Description",
+    expectedEffect: "Expected Effect",
+    dueDate: "Due Date",
     relatedUnitHelp: "Add each related unit that needs to be involved.",
     add: "Add",
     deleteUnit: "Delete unit",
@@ -1874,8 +1893,14 @@ const dpiaWorkspaceText = {
     dpiaSaveFailed: "Draft DPIA gagal disimpan.",
     savingDpia: "Menyimpan draft DPIA...",
     dpo: "Pejabat Pelindung Data Pribadi",
+    processOwnerPosition: "Kedudukan Pemilik Proses",
+    dpiaDate: "Tanggal DPIA",
+    responsiblePerson: "Penanggung Jawab",
+    relatedUnits: "Unit Terkait",
+    answer: "Jawaban",
     notes: "Catatan",
     highRiskPotential: "Potensi Risiko Tinggi",
+    highRiskExplanation: "Uraian Risiko Tinggi",
     riskMatrixIntro:
       "Tambahkan risiko secara manual, isi treatment, nilai residual risk dengan matrix, lalu pilih target risk yang diharapkan.",
     addRisk: "Tambah Risk",
@@ -1909,9 +1934,22 @@ const dpiaWorkspaceText = {
     addRiskToStart:
       "Tambahkan risk untuk mulai mengisi treatment, residual risk, dan target risk.",
     monitoringPlan: "Tinjauan dan Rencana Monitoring",
+    decisionTitle: "Kesimpulan dan Keputusan terhadap Pemrosesan Data Pribadi",
+    conclusion: "Kesimpulan",
+    publicSummary: "Ringkasan Publik",
+    documentVersion: "Versi Dokumen",
+    date: "Tanggal",
+    preparedBy: "Disusun oleh",
+    reviewedBy: "Ditinjau oleh",
+    approvedBy: "Disetujui oleh",
+    acknowledgedBy: "Diketahui oleh",
     delete: "Hapus",
     effectivenessNote: "Catatan Efektivitas",
     actionPlan: "Rencana Tindakan",
+    controlName: "Nama Kontrol",
+    existingTreatmentDescriptionLabel: "Deskripsi Existing Treatment",
+    expectedEffect: "Dampak yang Diharapkan",
+    dueDate: "Tanggal Jatuh Tempo",
     relatedUnitHelp: "Tambahkan unit yang perlu dilibatkan satu per satu.",
     add: "Tambah",
     deleteUnit: "Hapus unit",
