@@ -16,6 +16,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useI18n } from "@/components/language-provider";
 import { defaultFieldHelp, Label } from "@/components/ui/form";
 import {
   calculateRiskProfile,
@@ -69,32 +70,32 @@ const dpiaTabs = [
   {
     id: "identity",
     label: "Identity",
-    description: "Metadata dan penanggung jawab DPIA",
+    description: "DPIA metadata and accountable owner",
   },
   {
     id: "processing",
     label: "Processing",
-    description: "Analisa pemrosesan, identifikasi, dan para pihak",
+    description: "Processing analysis, identification, and parties",
   },
   {
     id: "highRisk",
     label: "High Risk",
-    description: "Kategori risiko tinggi Pasal 34",
+    description: "Article 34 high-risk criteria",
   },
   {
     id: "riskMatrix",
     label: "Risk Matrix",
-    description: "Risk event, treatment, residual, dan target risk",
+    description: "Risk event, treatment, residual, and target risk",
   },
   {
     id: "decision",
     label: "Decision",
-    description: "Kesimpulan dan monitoring",
+    description: "Conclusion and monitoring",
   },
   {
     id: "approval",
     label: "Approval",
-    description: "Kontrol dokumen dan persetujuan",
+    description: "Document control and approval",
   },
 ] as const;
 
@@ -123,6 +124,8 @@ export function DpiaWorkspace({
   initialStatus,
   riskRegisterReferences,
 }: DpiaWorkspaceProps) {
+  const { locale } = useI18n();
+  const text = dpiaWorkspaceText[locale];
   const [dpiaDraft, setDpiaDraft] = useState(draft);
   const [status, setStatus] = useState(initialStatus);
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -489,7 +492,7 @@ export function DpiaWorkspace({
             className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-900"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to result
+            {text.backToResult}
           </Link>
           <div className="flex flex-wrap items-center gap-3">
             <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-red-50 text-red-600">
@@ -518,14 +521,14 @@ export function DpiaWorkspace({
             disabled={saveState === "saving"}
           >
             <Save className="h-4 w-4" />
-            Simpan Draft
+            {text.saveDraft}
           </Button>
           <Button
             onClick={() => void saveDraft("Done")}
             disabled={saveState === "saving"}
           >
             <CheckCircle2 className="h-4 w-4" />
-            Tandai DPIA Selesai
+            {text.markDpiaDone}
           </Button>
         </div>
       </div>
@@ -567,10 +570,10 @@ export function DpiaWorkspace({
           )}
         >
           {saveState === "saved"
-            ? "Draft DPIA tersimpan."
+            ? text.dpiaSaved
             : saveState === "error"
-              ? "Draft DPIA gagal disimpan."
-              : "Menyimpan draft DPIA..."}
+              ? text.dpiaSaveFailed
+              : text.savingDpia}
         </div>
       ) : null}
 
@@ -588,7 +591,7 @@ export function DpiaWorkspace({
             onChange={(value) => updateMetadata("processOwnerPosition", value)}
           />
           <FieldInput
-            label="Pejabat Pelindung Data Pribadi"
+            label={text.dpo}
             value={dpiaDraft.metadata.dpo}
             onChange={(value) => updateMetadata("dpo", value)}
           />
@@ -649,7 +652,7 @@ export function DpiaWorkspace({
                       }
                     />
                     <FieldTextarea
-                      label="Catatan"
+                      label={text.notes}
                       value={row.notes}
                       onChange={(value) =>
                         updateRow(section.id, row.id, "notes", value)
@@ -667,7 +670,7 @@ export function DpiaWorkspace({
       {activeTab === "highRisk" ? (
       <Card>
         <CardHeader>
-          <CardTitle className="text-xl">Potensi Risiko Tinggi</CardTitle>
+          <CardTitle className="text-xl">{text.highRiskPotential}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -716,13 +719,12 @@ export function DpiaWorkspace({
           <div>
             <CardTitle className="text-xl">Risk Matrix 5x5</CardTitle>
             <p className="mt-1 text-sm text-slate-500">
-              Tambahkan risiko secara manual, isi treatment, nilai residual risk
-              dengan matrix, lalu pilih target risk yang diharapkan.
+              {text.riskMatrixIntro}
             </p>
           </div>
           <Button onClick={addRisk}>
             <Plus className="h-4 w-4" />
-            Tambah Risk
+            {text.addRisk}
           </Button>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -731,7 +733,7 @@ export function DpiaWorkspace({
               <div className="w-full lg:max-w-xl">
                 <label className="block">
                   <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                    Referensi dari Risk Register Dashboard
+                    {text.riskRegisterReference}
                   </span>
                   <select
                     value={selectedReferenceId}
@@ -745,7 +747,7 @@ export function DpiaWorkspace({
                         </option>
                       ))
                     ) : (
-                      <option value="">Belum ada referensi risk register</option>
+                      <option value="">{text.noRiskReference}</option>
                     )}
                   </select>
                 </label>
@@ -757,19 +759,19 @@ export function DpiaWorkspace({
                   disabled={!selectedReference}
                 >
                   <Plus className="h-4 w-4" />
-                  Tambah dari Referensi
+                  {text.addFromReference}
                 </Button>
                 <Button
                   onClick={applyReferenceToActiveRisk}
                   disabled={!selectedReference || !activeRisk}
                 >
-                  Gunakan ke Risk Aktif
+                  {text.applyToActiveRisk}
                 </Button>
               </div>
             </div>
             {selectedReference ? (
               <p className="mt-3 text-xs text-slate-600">
-                Sumber: <span className="font-semibold">{selectedReference.riskId}</span>{" "}
+                {text.source}: <span className="font-semibold">{selectedReference.riskId}</span>{" "}
                 {selectedReference.riskDescription}
               </p>
             ) : null}
@@ -796,7 +798,7 @@ export function DpiaWorkspace({
                         Risk {risk.number}
                       </div>
                       <div className="mt-1 text-sm font-bold leading-6 text-slate-950">
-                        {risk.event || "Risiko baru belum diberi kejadian"}
+                        {risk.event || text.newRiskUntitled}
                       </div>
                     </div>
                     <RiskBadge level={risk.residualProfile.level} />
@@ -806,10 +808,10 @@ export function DpiaWorkspace({
               ))
             ) : (
               <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">
-                Belum ada risiko, tambah risk untuk mulai penilaian.
+                {text.noRiskStart}
                 <Button className="mt-4 w-full" variant="secondary" onClick={addRisk}>
                   <Plus className="h-4 w-4" />
-                  Tambah Risk
+                  {text.addRisk}
                 </Button>
               </div>
             )}
@@ -825,7 +827,7 @@ export function DpiaWorkspace({
                         Risk {activeRisk.number}
                       </div>
                       <h2 className="mt-1 text-lg font-bold text-slate-950">
-                        {activeRisk.event || "Risiko baru"}
+                        {activeRisk.event || text.newRisk}
                       </h2>
                     </div>
                     <Button
@@ -835,7 +837,7 @@ export function DpiaWorkspace({
                       onClick={() => removeRisk(activeRisk.id)}
                     >
                       <Trash2 className="h-4 w-4" />
-                      Hapus Risk
+                      {text.deleteRisk}
                     </Button>
                   </div>
                   <RiskFlowSummary risk={activeRisk} />
@@ -843,7 +845,7 @@ export function DpiaWorkspace({
 
                 <div className="grid gap-4 lg:grid-cols-2">
                   <FieldInput
-                    label="Sumber Risiko"
+                    label={text.riskSource}
                     value={activeRisk.source}
                     onChange={(value) => updateRisk(activeRisk.id, { source: value })}
                   />
@@ -855,13 +857,13 @@ export function DpiaWorkspace({
                     }
                   />
                   <FieldTextarea
-                    label="Kejadian Risiko"
+                    label={text.riskEvent}
                     value={activeRisk.event}
                     onChange={(value) => updateRisk(activeRisk.id, { event: value })}
                     minRows={4}
                   />
                   <FieldTextarea
-                    label="Akibat Hukum"
+                    label={text.legalImpact}
                     value={activeRisk.legalImpact}
                     onChange={(value) =>
                       updateRisk(activeRisk.id, { legalImpact: value })
@@ -872,14 +874,16 @@ export function DpiaWorkspace({
 
                 <TreatmentRepeater
                   title="Existing Treatments"
-                  description="Isi semua kontrol yang sudah berjalan. Residual risk di bawahnya merupakan hasil setelah treatment ini dipertimbangkan."
-                  emptyLabel="Belum ada existing treatment."
-                  addLabel="Tambah Existing Treatment"
+                  description={text.existingTreatmentDescription}
+                  emptyLabel={text.noExistingTreatment}
+                  addLabel={text.addExistingTreatment}
+                  deleteLabel={text.delete}
                   items={activeRisk.existingTreatments}
                   onAdd={() => addExistingTreatment(activeRisk.id)}
                   onRemove={(itemId) => removeExistingTreatment(activeRisk.id, itemId)}
                   renderItem={(item) => (
                     <ExistingTreatmentFields
+                      copy={text}
                       treatment={item}
                       onChange={(patch) =>
                         updateExistingTreatment(activeRisk.id, item.id, patch)
@@ -890,7 +894,7 @@ export function DpiaWorkspace({
 
                 <RiskStageCard
                   title="Residual Risk after Treatment"
-                  description="Pilih impact dan likelihood setelah semua existing treatment diperhitungkan."
+                  description={text.residualRiskDescription}
                   profile={activeRisk.residualProfile}
                   onChange={(impact, likelihood) =>
                     updateRiskProfile(
@@ -904,14 +908,16 @@ export function DpiaWorkspace({
 
                 <TreatmentRepeater
                   title="Treatment Plan"
-                  description="Isi rencana treatment tambahan untuk menurunkan residual risk ke target akhir."
-                  emptyLabel="Belum ada treatment plan."
-                  addLabel="Tambah Treatment Plan"
+                  description={text.treatmentPlanDescription}
+                  emptyLabel={text.noTreatmentPlan}
+                  addLabel={text.addTreatmentPlan}
+                  deleteLabel={text.delete}
                   items={activeRisk.treatmentPlans}
                   onAdd={() => addTreatmentPlan(activeRisk.id)}
                   onRemove={(itemId) => removeTreatmentPlan(activeRisk.id, itemId)}
                   renderItem={(item) => (
                     <TreatmentPlanFields
+                      copy={text}
                       plan={item}
                       onChange={(patch) =>
                         updateTreatmentPlan(activeRisk.id, item.id, patch)
@@ -922,7 +928,7 @@ export function DpiaWorkspace({
 
                 <TargetRiskSelectCard
                   title="Target Risk after Treatment Plan"
-                  description="Pilih target/final risk yang diharapkan setelah treatment plan selesai dilakukan."
+                  description={text.targetRiskDescription}
                   profile={activeRisk.targetProfile}
                   onChange={(level) =>
                     updateTargetRiskLevel(activeRisk.id, level)
@@ -942,7 +948,7 @@ export function DpiaWorkspace({
                     }
                   />
                   <FieldInput
-                    label="Target Waktu Pelaksanaan"
+                    label={text.targetTimeline}
                     value={activeRisk.targetTimeline}
                     type="date"
                     onChange={(value) =>
@@ -950,7 +956,7 @@ export function DpiaWorkspace({
                     }
                   />
                   <FieldSelect
-                    label="Persetujuan Langkah Pengurangan Risiko"
+                    label={text.mitigationApproval}
                     value={activeRisk.mitigationApproval}
                     options={selectOptionsWithCurrent(
                       mitigationApprovalOptions,
@@ -961,6 +967,7 @@ export function DpiaWorkspace({
                     }
                   />
                   <RelatedUnitsRepeater
+                    copy={text}
                     units={activeRisk.relatedUnits}
                     onAdd={() => addRelatedUnit(activeRisk.id)}
                     onChange={(index, value) =>
@@ -974,15 +981,14 @@ export function DpiaWorkspace({
               <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-8 text-center">
                 <Grid3X3 className="mx-auto h-8 w-8 text-slate-400" />
                 <h2 className="mt-3 font-bold text-slate-950">
-                  Belum ada risiko
+                  {text.noRisk}
                 </h2>
                 <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
-                  Tambahkan risk untuk mulai mengisi treatment, residual risk,
-                  dan target risk.
+                  {text.addRiskToStart}
                 </p>
                 <Button className="mt-5" onClick={addRisk}>
                   <Plus className="h-4 w-4" />
-                  Tambah Risk
+                  {text.addRisk}
                 </Button>
               </div>
             )}
@@ -1007,7 +1013,7 @@ export function DpiaWorkspace({
             minRows={5}
           />
           <FieldTextarea
-            label="Tinjauan dan Rencana Monitoring"
+            label={text.monitoringPlan}
             value={dpiaDraft.monitoringPlan}
             onChange={(value) => updateDraftField("monitoringPlan", value)}
             minRows={5}
@@ -1064,7 +1070,7 @@ export function DpiaWorkspace({
 
       <div className="flex flex-wrap justify-between gap-3">
         <Link href={resultHref} className={buttonVariants({ variant: "secondary" })}>
-          Back to Results
+          {text.backToResult}
         </Link>
         <div className="flex flex-wrap gap-3">
           <Button
@@ -1072,14 +1078,14 @@ export function DpiaWorkspace({
             onClick={() => goToRelativeTab(-1)}
             disabled={activeTabIndex === 0}
           >
-            Back
+            {text.previous}
           </Button>
           <Button
             variant="secondary"
             onClick={() => goToRelativeTab(1)}
             disabled={activeTabIndex === dpiaTabs.length - 1}
           >
-            Continue
+            {text.continue}
           </Button>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -1089,7 +1095,7 @@ export function DpiaWorkspace({
             disabled={saveState === "saving"}
           >
             <Download className="h-4 w-4" />
-            Generate Excel
+            {text.generateExcel}
           </Button>
           <Button
             variant="secondary"
@@ -1097,14 +1103,14 @@ export function DpiaWorkspace({
             disabled={saveState === "saving"}
           >
             <Save className="h-4 w-4" />
-            Simpan Draft
+            {text.saveDraft}
           </Button>
           <Button
             onClick={() => void saveDraft("Done")}
             disabled={saveState === "saving"}
           >
             <CheckCircle2 className="h-4 w-4" />
-            Tandai DPIA Selesai
+            {text.markDpiaDone}
           </Button>
         </div>
       </div>
@@ -1268,6 +1274,7 @@ function TreatmentRepeater<T extends { id: string }>({
   description,
   emptyLabel,
   addLabel,
+  deleteLabel,
   items,
   onAdd,
   onRemove,
@@ -1277,6 +1284,7 @@ function TreatmentRepeater<T extends { id: string }>({
   description: string;
   emptyLabel: string;
   addLabel: string;
+  deleteLabel: string;
   items: T[];
   onAdd: () => void;
   onRemove: (id: string) => void;
@@ -1309,7 +1317,7 @@ function TreatmentRepeater<T extends { id: string }>({
                   onClick={() => onRemove(item.id)}
                 >
                   <Trash2 className="h-4 w-4" />
-                  Hapus
+                  {deleteLabel}
                 </Button>
               </div>
               {renderItem(item)}
@@ -1326,9 +1334,11 @@ function TreatmentRepeater<T extends { id: string }>({
 }
 
 function ExistingTreatmentFields({
+  copy,
   treatment,
   onChange,
 }: {
+  copy: (typeof dpiaWorkspaceText)["en"] | (typeof dpiaWorkspaceText)["id"];
   treatment: DpiaExistingTreatment;
   onChange: (patch: Partial<DpiaExistingTreatment>) => void;
 }) {
@@ -1358,7 +1368,7 @@ function ExistingTreatmentFields({
       />
       <div className="lg:col-span-2">
         <FieldTextarea
-          label="Catatan Efektivitas"
+          label={copy.effectivenessNote}
           value={treatment.effectivenessNote}
           onChange={(value) => onChange({ effectivenessNote: value })}
           minRows={3}
@@ -1369,16 +1379,18 @@ function ExistingTreatmentFields({
 }
 
 function TreatmentPlanFields({
+  copy,
   plan,
   onChange,
 }: {
+  copy: (typeof dpiaWorkspaceText)["en"] | (typeof dpiaWorkspaceText)["id"];
   plan: DpiaTreatmentPlan;
   onChange: (patch: Partial<DpiaTreatmentPlan>) => void;
 }) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <FieldTextarea
-        label="Rencana Tindakan"
+        label={copy.actionPlan}
         value={plan.action}
         onChange={(value) => onChange({ action: value })}
         minRows={4}
@@ -1412,11 +1424,13 @@ function TreatmentPlanFields({
 }
 
 function RelatedUnitsRepeater({
+  copy,
   units,
   onAdd,
   onChange,
   onRemove,
 }: {
+  copy: (typeof dpiaWorkspaceText)["en"] | (typeof dpiaWorkspaceText)["id"];
   units: string[];
   onAdd: () => void;
   onChange: (index: number, value: string) => void;
@@ -1430,12 +1444,12 @@ function RelatedUnitsRepeater({
             Related Units for Coordination
           </div>
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            Tambahkan unit yang perlu dilibatkan satu per satu.
+            {copy.relatedUnitHelp}
           </p>
         </div>
         <Button variant="secondary" size="sm" onClick={onAdd}>
           <Plus className="h-4 w-4" />
-          Tambah
+          {copy.add}
         </Button>
       </div>
 
@@ -1454,8 +1468,8 @@ function RelatedUnitsRepeater({
                 size="icon"
                 className="text-red-600 hover:bg-red-50 hover:text-red-700"
                 onClick={() => onRemove(index)}
-                aria-label="Hapus unit"
-                title="Hapus unit"
+                aria-label={copy.deleteUnit}
+                title={copy.deleteUnit}
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -1463,7 +1477,7 @@ function RelatedUnitsRepeater({
           ))
         ) : (
           <div className="rounded border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
-            Belum ada related unit.
+            {copy.noRelatedUnit}
           </div>
         )}
       </div>
@@ -1793,3 +1807,115 @@ function selectOptionsWithCurrent(options: string[], current: string) {
 
   return [current, ...options];
 }
+
+const dpiaWorkspaceText = {
+  en: {
+    backToResult: "Back to result",
+    previous: "Back",
+    continue: "Continue",
+    generateExcel: "Generate Excel",
+    saveDraft: "Save Draft",
+    markDpiaDone: "Mark DPIA Completed",
+    dpiaSaved: "DPIA draft saved.",
+    dpiaSaveFailed: "Failed to save DPIA draft.",
+    savingDpia: "Saving DPIA draft...",
+    dpo: "Data Protection Officer",
+    notes: "Notes",
+    highRiskPotential: "High-Risk Processing Indicators",
+    riskMatrixIntro:
+      "Add risks manually, document treatments, assess residual risk with the matrix, then choose the expected target risk.",
+    addRisk: "Add Risk",
+    riskRegisterReference: "Risk Register Dashboard Reference",
+    noRiskReference: "No risk register reference yet",
+    addFromReference: "Add from Reference",
+    applyToActiveRisk: "Apply to Active Risk",
+    source: "Source",
+    newRiskUntitled: "New risk has no event yet",
+    noRiskStart: "No risks yet. Add a risk to start the assessment.",
+    newRisk: "New risk",
+    deleteRisk: "Delete Risk",
+    riskSource: "Risk Source",
+    riskEvent: "Risk Event",
+    legalImpact: "Legal Impact",
+    existingTreatmentDescription:
+      "List all controls that are already in place. The residual risk below should reflect these existing treatments.",
+    residualRiskDescription:
+      "Select impact and likelihood after all existing treatments have been considered.",
+    treatmentPlanDescription:
+      "Add further treatment plans to reduce residual risk toward the target risk.",
+    targetRiskDescription:
+      "Select the target/final risk expected after the treatment plan is completed.",
+    noExistingTreatment: "No existing treatment yet.",
+    addExistingTreatment: "Add Existing Treatment",
+    noTreatmentPlan: "No treatment plan yet.",
+    addTreatmentPlan: "Add Treatment Plan",
+    targetTimeline: "Target Implementation Date",
+    mitigationApproval: "Risk Reduction Approval",
+    noRisk: "No risks yet",
+    addRiskToStart:
+      "Add a risk to start completing treatments, residual risk, and target risk.",
+    monitoringPlan: "Monitoring Review and Plan",
+    delete: "Delete",
+    effectivenessNote: "Effectiveness Note",
+    actionPlan: "Action Plan",
+    relatedUnitHelp: "Add each related unit that needs to be involved.",
+    add: "Add",
+    deleteUnit: "Delete unit",
+    noRelatedUnit: "No related unit yet.",
+  },
+  id: {
+    backToResult: "Kembali ke hasil",
+    previous: "Kembali",
+    continue: "Lanjut",
+    generateExcel: "Generate Excel",
+    saveDraft: "Simpan Draft",
+    markDpiaDone: "Tandai DPIA Selesai",
+    dpiaSaved: "Draft DPIA tersimpan.",
+    dpiaSaveFailed: "Draft DPIA gagal disimpan.",
+    savingDpia: "Menyimpan draft DPIA...",
+    dpo: "Pejabat Pelindung Data Pribadi",
+    notes: "Catatan",
+    highRiskPotential: "Potensi Risiko Tinggi",
+    riskMatrixIntro:
+      "Tambahkan risiko secara manual, isi treatment, nilai residual risk dengan matrix, lalu pilih target risk yang diharapkan.",
+    addRisk: "Tambah Risk",
+    riskRegisterReference: "Referensi dari Risk Register Dashboard",
+    noRiskReference: "Belum ada referensi risk register",
+    addFromReference: "Tambah dari Referensi",
+    applyToActiveRisk: "Gunakan ke Risk Aktif",
+    source: "Sumber",
+    newRiskUntitled: "Risiko baru belum diberi kejadian",
+    noRiskStart: "Belum ada risiko, tambah risk untuk mulai penilaian.",
+    newRisk: "Risiko baru",
+    deleteRisk: "Hapus Risk",
+    riskSource: "Sumber Risiko",
+    riskEvent: "Kejadian Risiko",
+    legalImpact: "Akibat Hukum",
+    existingTreatmentDescription:
+      "Isi semua kontrol yang sudah berjalan. Residual risk di bawahnya merupakan hasil setelah treatment ini dipertimbangkan.",
+    residualRiskDescription:
+      "Pilih impact dan likelihood setelah semua existing treatment diperhitungkan.",
+    treatmentPlanDescription:
+      "Isi rencana treatment tambahan untuk menurunkan residual risk ke target akhir.",
+    targetRiskDescription:
+      "Pilih target/final risk yang diharapkan setelah treatment plan selesai dilakukan.",
+    noExistingTreatment: "Belum ada existing treatment.",
+    addExistingTreatment: "Tambah Existing Treatment",
+    noTreatmentPlan: "Belum ada treatment plan.",
+    addTreatmentPlan: "Tambah Treatment Plan",
+    targetTimeline: "Target Waktu Pelaksanaan",
+    mitigationApproval: "Persetujuan Langkah Pengurangan Risiko",
+    noRisk: "Belum ada risiko",
+    addRiskToStart:
+      "Tambahkan risk untuk mulai mengisi treatment, residual risk, dan target risk.",
+    monitoringPlan: "Tinjauan dan Rencana Monitoring",
+    delete: "Hapus",
+    effectivenessNote: "Catatan Efektivitas",
+    actionPlan: "Rencana Tindakan",
+    relatedUnitHelp: "Tambahkan unit yang perlu dilibatkan satu per satu.",
+    add: "Tambah",
+    deleteUnit: "Hapus unit",
+    noRelatedUnit: "Belum ada related unit.",
+  },
+} as const;
+

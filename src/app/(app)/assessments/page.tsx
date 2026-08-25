@@ -8,12 +8,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireViewer, toAccessScope } from "@/lib/access";
 import { listTasks } from "@/lib/data";
+import { getCurrentLocale } from "@/lib/i18n-server";
+import type { Locale } from "@/lib/i18n";
 import { formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 export default async function AssessmentsPage() {
   const viewer = await requireViewer();
+  const locale = await getCurrentLocale();
+  const text = assessmentsText[locale];
 
   if (viewer.role === "User") {
     redirect("/assessments/dpia");
@@ -86,19 +90,12 @@ export default async function AssessmentsPage() {
                 <div className="flex flex-wrap gap-2">
                   <Link href={assessmentHref(task)}>
                     <Button variant="secondary">
-                      {task.taskType === "DPIA"
-                        ? "Isi DPIA"
-                        : task.taskType === "TIA"
-                          ? "Isi TIA"
-                          : task.taskType === "LIA"
-                            ? "Isi LIA"
-                            : "Open"}
+                      {text.openAssessment} {task.taskType}
                     </Button>
                   </Link>
                   <DeleteActionButton
                     endpoint={`/api/tasks/${task.id}`}
-                    label="Hapus"
-                    confirmMessage={`Hapus assessment ${task.taskType} untuk "${task.activityName}"?`}
+                    confirmMessage={`${text.deleteAssessment} ${task.taskType} ${text.forActivity} "${task.activityName}"?`}
                   />
                 </div>
               </CardContent>
@@ -107,8 +104,7 @@ export default async function AssessmentsPage() {
         ) : (
           <Card>
             <CardContent className="py-10 text-center text-sm text-slate-500">
-              Belum ada assessment. Tambah aktivitas RoPA untuk membuat DPIA, TIA,
-              atau LIA secara otomatis.
+              {text.noAssessments}
             </CardContent>
           </Card>
         )}
@@ -116,6 +112,23 @@ export default async function AssessmentsPage() {
     </div>
   );
 }
+
+const assessmentsText = {
+  en: {
+    openAssessment: "Open",
+    deleteAssessment: "Delete assessment",
+    forActivity: "for",
+    noAssessments:
+      "No assessments yet. Add a RoPA activity to automatically generate DPIA, TIA, or LIA tasks.",
+  },
+  id: {
+    openAssessment: "Isi",
+    deleteAssessment: "Hapus assessment",
+    forActivity: "untuk",
+    noAssessments:
+      "Belum ada assessment. Tambah aktivitas RoPA untuk membuat DPIA, TIA, atau LIA secara otomatis.",
+  },
+} as const satisfies Record<Locale, Record<string, string>>;
 
 function assessmentHref(task: { id: string; taskType: string; ropaId: string }) {
   if (task.taskType === "DPIA") {

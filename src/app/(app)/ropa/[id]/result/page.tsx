@@ -6,6 +6,8 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireViewer, toAccessScope } from "@/lib/access";
 import { getRopaById } from "@/lib/data";
+import { getCurrentLocale } from "@/lib/i18n-server";
+import type { Locale } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +17,8 @@ type ResultPageProps = {
 
 export default async function RopaResultPage({ params }: ResultPageProps) {
   const viewer = await requireViewer();
+  const locale = await getCurrentLocale();
+  const text = resultText[locale];
   const { id } = await params;
   const activity = await getRopaById(id, toAccessScope(viewer));
 
@@ -60,12 +64,12 @@ export default async function RopaResultPage({ params }: ResultPageProps) {
               className={buttonVariants({ variant: "secondary" })}
             >
               <Download className="h-4 w-4" />
-              Generate RoPA Department Excel
+              {text.generateDepartmentExcel}
             </Link>
             <DeleteActionButton
               endpoint={`/api/ropa/${activity.id}`}
-              label="Hapus Aktivitas"
-              confirmMessage={`Hapus aktivitas RoPA "${activity.activityName}" beserta semua DPIA/TIA/LIA terkait?`}
+              label={text.deleteActivity}
+              confirmMessage={`${text.deleteRopaConfirm} "${activity.activityName}" ${text.deleteRopaConfirmSuffix}`}
               redirectTo="/ropa"
             />
             <Link href="/ropa">
@@ -118,6 +122,7 @@ export default async function RopaResultPage({ params }: ResultPageProps) {
                 <ObligationCard
                   key={assessment.id}
                   assessment={assessment}
+                  locale={locale}
                   destinationCountries={
                     assessment.taskType === "TIA"
                       ? getAssessmentDestinationCountries(
@@ -176,6 +181,7 @@ function SummaryBlock({
 function ObligationCard({
   assessment,
   destinationCountries,
+  locale,
 }: {
   assessment: {
     id: string;
@@ -187,7 +193,9 @@ function ObligationCard({
     notes: string;
   };
   destinationCountries: string[];
+  locale: Locale;
 }) {
+  const text = resultText[locale];
   const palette = assessment.taskType === "DPIA"
     ? "border-red-100 bg-red-50 text-red-900"
     : assessment.taskType === "TIA"
@@ -231,21 +239,21 @@ function ObligationCard({
                 href={`/assessments/${assessment.id}/dpia`}
                 className={buttonVariants({ variant: "danger", size: "sm" })}
               >
-                Isi DPIA di Aplikasi
+                {text.fillDpiaInApp}
               </Link>
             ) : assessment.taskType === "LIA" ? (
               <Link
                 href={`/assessments/${assessment.id}/lia`}
                 className={buttonVariants({ variant: "warning", size: "sm" })}
               >
-                Isi LIA di Aplikasi
+                {text.fillLiaInApp}
               </Link>
             ) : assessment.taskType === "TIA" ? (
               <Link
                 href={`/assessments/${assessment.id}/tia`}
                 className={buttonVariants({ variant: "warning", size: "sm" })}
               >
-                Isi TIA di Aplikasi
+                {text.fillTiaInApp}
               </Link>
             ) : (
               <Button variant="warning" size="sm">
@@ -258,6 +266,27 @@ function ObligationCard({
     </div>
   );
 }
+
+const resultText = {
+  en: {
+    generateDepartmentExcel: "Generate RoPA Department Excel",
+    deleteActivity: "Delete Activity",
+    deleteRopaConfirm: "Delete RoPA activity",
+    deleteRopaConfirmSuffix: "and all related DPIA/TIA/LIA tasks?",
+    fillDpiaInApp: "Complete DPIA in App",
+    fillLiaInApp: "Complete LIA in App",
+    fillTiaInApp: "Complete TIA in App",
+  },
+  id: {
+    generateDepartmentExcel: "Generate Excel RoPA Departemen",
+    deleteActivity: "Hapus Aktivitas",
+    deleteRopaConfirm: "Hapus aktivitas RoPA",
+    deleteRopaConfirmSuffix: "beserta semua DPIA/TIA/LIA terkait?",
+    fillDpiaInApp: "Isi DPIA di Aplikasi",
+    fillLiaInApp: "Isi LIA di Aplikasi",
+    fillTiaInApp: "Isi TIA di Aplikasi",
+  },
+} as const satisfies Record<Locale, Record<string, string>>;
 
 function toAssessmentProgress(status: "Todo" | "In Progress" | "Done", notes: string) {
   if (status === "Done") {

@@ -13,6 +13,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useI18n } from "@/components/language-provider";
 import { defaultFieldHelp, Label } from "@/components/ui/form";
 import {
   serializeLiaDraftNotes,
@@ -37,6 +38,8 @@ export function LiaWorkspace({
   resultHref,
   initialStatus,
 }: LiaWorkspaceProps) {
+  const { locale } = useI18n();
+  const text = workspaceText[locale];
   const [liaDraft, setLiaDraft] = useState(draft);
   const [status, setStatus] = useState(initialStatus);
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -122,7 +125,7 @@ export function LiaWorkspace({
             className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-900"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to result
+            {text.backToResult}
           </Link>
           <div className="flex flex-wrap items-center gap-3">
             <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
@@ -151,7 +154,7 @@ export function LiaWorkspace({
             disabled={saveState === "saving"}
           >
             <Save className="h-4 w-4" />
-            Simpan Draft
+            {text.saveDraft}
           </Button>
           <Button
             onClick={() => void saveDraft("Done")}
@@ -200,7 +203,7 @@ export function LiaWorkspace({
             ? "Draft LIA tersimpan."
             : saveState === "error"
               ? "Draft LIA gagal disimpan."
-              : "Menyimpan draft LIA..."}
+              : text.savingLia}
         </div>
       ) : null}
 
@@ -246,7 +249,7 @@ export function LiaWorkspace({
                       }
                     />
                     <FieldTextarea
-                      label="Catatan"
+                      label={text.notes}
                       value={row.notes}
                       onChange={(value) =>
                         updateRow(section.id, row.id, "notes", value)
@@ -287,7 +290,7 @@ export function LiaWorkspace({
             minRows={3}
           />
           <FieldTextarea
-            label="Rencana reviu selanjutnya"
+            label={text.nextReviewPlan}
             value={liaDraft.decision.nextReview}
             onChange={(value) => updateDecision("nextReview", value)}
             minRows={3}
@@ -314,7 +317,7 @@ export function LiaWorkspace({
             disabled={saveState === "saving"}
           >
             <Save className="h-4 w-4" />
-            Simpan Draft
+            {text.saveDraft}
           </Button>
           <Button
             onClick={() => void saveDraft("Done")}
@@ -328,6 +331,23 @@ export function LiaWorkspace({
     </div>
   );
 }
+
+const workspaceText = {
+  en: {
+    backToResult: "Back to result",
+    saveDraft: "Save Draft",
+    savingLia: "Saving LIA draft...",
+    notes: "Notes",
+    nextReviewPlan: "Next review plan",
+  },
+  id: {
+    backToResult: "Kembali ke hasil",
+    saveDraft: "Simpan Draft",
+    savingLia: "Menyimpan draft LIA...",
+    notes: "Catatan",
+    nextReviewPlan: "Rencana reviu selanjutnya",
+  },
+} as const;
 
 function SummaryItem({ label, value }: { label: string; value: string }) {
   return (

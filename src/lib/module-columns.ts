@@ -62,20 +62,20 @@ export const moduleColumnDefinitions: Record<
     {
       key: "activityName",
       label: "Activity Name",
-      description: "Nama aktivitas pemrosesan.",
+      description: "Processing activity name.",
       locked: true,
       defaultVisible: true,
     },
     {
       key: "departmentName",
       label: "Department",
-      description: "Unit kerja pemilik aktivitas.",
+      description: "Owning department or business unit.",
       defaultVisible: true,
     },
     {
       key: "legalBasis",
       label: "Legal Basis",
-      description: "Dasar pemrosesan yang dipilih.",
+      description: "Selected processing legal basis.",
     },
     {
       key: "subjectCategory",
@@ -85,18 +85,18 @@ export const moduleColumnDefinitions: Record<
     },
     {
       key: "personalDataTypes",
-      label: "Jenis Data Pribadi",
-      description: "Ringkasan jenis data pribadi yang diproses.",
+      label: "Personal Data Types",
+      description: "Summary of processed personal data types.",
     },
     {
       key: "recipients",
-      label: "Pihak Penerima",
-      description: "Pihak yang dapat menerima atau mengakses data.",
+      label: "Recipients",
+      description: "Parties that may receive or access the data.",
     },
     {
       key: "dataReceiverRole",
-      label: "Peran Pihak",
-      description: "Peran utama penerima data.",
+      label: "Recipient Role",
+      description: "Primary role of the data recipient.",
     },
     {
       key: "riskLevel",
@@ -135,7 +135,7 @@ export const moduleColumnDefinitions: Record<
     {
       key: "actions",
       label: "Actions",
-      description: "Aksi lihat, analisis, dan hapus.",
+      description: "View, analyze, and delete actions.",
       locked: true,
       defaultVisible: true,
     },
@@ -150,32 +150,32 @@ function assessmentColumns(): ModuleColumnDefinition[] {
     {
       key: "activityName",
       label: "Activity",
-      description: "Aktivitas RoPA terkait.",
+      description: "Related RoPA activity.",
       locked: true,
       defaultVisible: true,
     },
     {
       key: "departmentName",
       label: "Department",
-      description: "Unit kerja terkait.",
+      description: "Related business unit.",
       defaultVisible: true,
     },
     {
       key: "status",
       label: "Status",
-      description: "Status pengerjaan assessment.",
+      description: "Assessment progress status.",
       defaultVisible: true,
     },
     {
       key: "severity",
       label: "Severity",
-      description: "Tingkat kewajiban atau urgensi.",
+      description: "Obligation or urgency level.",
       defaultVisible: true,
     },
     {
       key: "dueDate",
       label: "Due Date",
-      description: "Target penyelesaian assessment.",
+      description: "Assessment target completion date.",
       defaultVisible: true,
     },
     {
@@ -186,7 +186,7 @@ function assessmentColumns(): ModuleColumnDefinition[] {
     {
       key: "reason",
       label: "Reason",
-      description: "Alasan assessment tertrigger.",
+      description: "Reason the assessment was triggered.",
     },
     {
       key: "title",
@@ -196,17 +196,17 @@ function assessmentColumns(): ModuleColumnDefinition[] {
     {
       key: "createdAt",
       label: "Created",
-      description: "Tanggal assessment dibuat.",
+      description: "Assessment creation date.",
     },
     {
       key: "updatedAt",
       label: "Updated",
-      description: "Tanggal assessment terakhir diperbarui.",
+      description: "Last assessment update date.",
     },
     {
       key: "action",
       label: "Action",
-      description: "Aksi membuka assessment.",
+      description: "Open assessment action.",
       locked: true,
       defaultVisible: true,
     },
@@ -306,8 +306,8 @@ export function createCustomColumn(
 
   return {
     key,
-    label: normalizedLabel || `Kolom Custom ${module.toUpperCase()}`,
-    description: "Kolom custom yang diatur oleh MasterAdmin.",
+    label: normalizedLabel || `Custom Column ${module.toUpperCase()}`,
+    description: "Custom column configured by MasterAdmin.",
     inputType,
     options: hasSelectableOptions(inputType) ? normalizeOptions(options) : [],
   };

@@ -17,6 +17,7 @@ import { Table, TBody, TD, TH, THead } from "@/components/ui/table";
 import type { AccessScope } from "@/lib/data";
 import { getModuleColumnSettings, listTasks } from "@/lib/data";
 import { getModuleColumnDefinitions } from "@/lib/module-columns";
+import { translate, type Locale, type TranslationKey } from "@/lib/i18n";
 import type { AssessmentType } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
 
@@ -24,6 +25,7 @@ type AssessmentTypeDashboardProps = {
   type: AssessmentType;
   scope?: AccessScope;
   canDeleteTasks?: boolean;
+  locale?: Locale;
 };
 
 const assessmentConfig: Record<
@@ -85,7 +87,9 @@ export async function AssessmentTypeDashboard({
   type,
   scope,
   canDeleteTasks = false,
+  locale = "en",
 }: AssessmentTypeDashboardProps) {
+  const t = createT(locale);
   const config = assessmentConfig[type];
   const Icon = config.icon;
   const tasks = (await listTasks(undefined, { scope })).filter(
@@ -121,7 +125,7 @@ export async function AssessmentTypeDashboard({
           </div>
         </div>
         <Link href="/ropa/new">
-          <Button>New RoPA Analysis</Button>
+          <Button>{t("assessment.newRopaAnalysis")}</Button>
         </Link>
       </div>
 
@@ -135,26 +139,26 @@ export async function AssessmentTypeDashboard({
         />
         <SummaryCard
           icon={Clock3}
-          label="In Progress"
+          label={t("assessment.inProgress")}
           value={inProgressTasks.length}
-          caption={`${dueSoon.length} due within 7 days`}
+          caption={`${dueSoon.length} ${t("assessment.dueWithin7Days")}`}
           accent="bg-blue-50 text-blue-600"
         />
         <SummaryCard
           icon={AlertCircle}
           label={config.focusLabel}
           value={criticalTasks.length || openTasks.length}
-          caption={type === "DPIA" ? "Critical processing reviews" : "Needs review"}
+          caption={type === "DPIA" ? t("assessment.criticalProcessingReviews") : t("assessment.needsReview")}
           accent={
             type === "DPIA" ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-600"
           }
         />
         <SummaryCard
           icon={CheckCircle2}
-          label="Completion"
+          label={t("assessment.completion")}
           value={completion}
           suffix="%"
-          caption={`${doneTasks.length} completed`}
+          caption={`${doneTasks.length} ${t("assessment.completed")}`}
           accent="bg-emerald-50 text-emerald-600"
         />
       </div>
@@ -166,7 +170,7 @@ export async function AssessmentTypeDashboard({
               <ClipboardCheck className="h-5 w-5 text-blue-600" />
               {type} Work Queue
             </CardTitle>
-            <Badge tone={config.tone}>{openTasks.length} Open</Badge>
+            <Badge tone={config.tone}>{openTasks.length} {t("assessment.open")}</Badge>
           </CardHeader>
           <CardContent>
             <Table>
@@ -186,9 +190,9 @@ export async function AssessmentTypeDashboard({
                         columnKey={column.key}
                         task={task}
                         hrefSuffix={config.hrefSuffix}
-                        type={type}
                         canDeleteTasks={canDeleteTasks}
-                        actionLabel={`Open ${type}`}
+                        actionLabel={`${t("assessment.open")} ${type}`}
+                        deleteConfirmMessage={`${t("assessment.deleteAssessmentConfirmPrefix")} ${type} ${t("assessment.for")} "${task.activityName}"?`}
                       />
                     ))}
                   </tr>
@@ -197,7 +201,7 @@ export async function AssessmentTypeDashboard({
             </Table>
             {openTasks.length === 0 ? (
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">
-                Tidak ada {type} yang masih terbuka.
+                {t("assessment.noOpenPrefix")} {type} {t("assessment.noOpenSuffix")}
               </div>
             ) : null}
           </CardContent>
@@ -218,19 +222,19 @@ export async function AssessmentTypeDashboard({
             <CardContent>
               <p className="text-sm leading-6 text-slate-600">{config.guidance}</p>
               <div className="mt-5 grid grid-cols-3 gap-3 text-center">
-                <MiniMetric label="Todo" value={countStatus(tasks, "Todo")} />
+                <MiniMetric label={t("assessment.todo")} value={countStatus(tasks, "Todo")} />
                 <MiniMetric
-                  label="Progress"
+                  label={t("assessment.progress")}
                   value={countStatus(tasks, "In Progress")}
                 />
-                <MiniMetric label="Done" value={countStatus(tasks, "Done")} />
+                <MiniMetric label={t("assessment.done")} value={countStatus(tasks, "Done")} />
               </div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>Due Soon</CardTitle>
+              <CardTitle>{t("assessment.dueSoon")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {dueSoon.slice(0, 4).map((task) => (
@@ -243,12 +247,12 @@ export async function AssessmentTypeDashboard({
                     {task.activityName}
                   </div>
                   <div className="mt-1 text-xs text-slate-500">
-                    Due {formatDate(task.dueDate)} - {task.picName}
+                    {t("assessment.due")} {formatDate(task.dueDate)} - {task.picName}
                   </div>
                 </Link>
               ))}
               {dueSoon.length === 0 ? (
-                <p className="text-sm text-slate-500">No urgent {type} due this week.</p>
+                <p className="text-sm text-slate-500">{t("assessment.noUrgentPrefix")} {type} {t("assessment.noUrgentSuffix")}</p>
               ) : null}
             </CardContent>
           </Card>
@@ -259,7 +263,7 @@ export async function AssessmentTypeDashboard({
         <CardHeader className="flex flex-row items-center justify-between gap-4">
           <CardTitle className="flex items-center gap-2">
             <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-            {type} yang Sudah Dikerjakan
+            {type} {t("assessment.completedSection")}
           </CardTitle>
           <Badge tone="green">{doneTasks.length} Done</Badge>
         </CardHeader>
@@ -281,9 +285,9 @@ export async function AssessmentTypeDashboard({
                       columnKey={column.key}
                       task={task}
                       hrefSuffix={config.hrefSuffix}
-                      type={type}
                       canDeleteTasks={canDeleteTasks}
-                      actionLabel={`Lihat ${type}`}
+                      actionLabel={`${t("assessment.view")} ${type}`}
+                      deleteConfirmMessage={`${t("assessment.deleteAssessmentConfirmPrefix")} ${type} ${t("assessment.for")} "${task.activityName}"?`}
                     />
                   ))}
                 </tr>
@@ -292,7 +296,7 @@ export async function AssessmentTypeDashboard({
           </Table>
           {doneTasks.length === 0 ? (
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">
-              Belum ada {type} yang ditandai selesai.
+              {t("assessment.noCompletedPrefix")} {type} {t("assessment.noCompletedSuffix")}
             </div>
           ) : null}
         </CardContent>
@@ -343,16 +347,16 @@ function AssessmentDashboardCell({
   columnKey,
   task,
   hrefSuffix,
-  type,
   canDeleteTasks,
   actionLabel,
+  deleteConfirmMessage,
 }: {
   columnKey: string;
   task: Awaited<ReturnType<typeof listTasks>>[number];
   hrefSuffix: "dpia" | "tia" | "lia";
-  type: AssessmentType;
   canDeleteTasks: boolean;
   actionLabel: string;
+  deleteConfirmMessage: string;
 }) {
   if (columnKey === "activityName") {
     return (
@@ -421,8 +425,7 @@ function AssessmentDashboardCell({
           {canDeleteTasks ? (
             <DeleteActionButton
               endpoint={`/api/tasks/${task.id}`}
-              label="Hapus"
-              confirmMessage={`Hapus task ${type} untuk "${task.activityName}"?`}
+              confirmMessage={deleteConfirmMessage}
             />
           ) : null}
         </div>
@@ -435,6 +438,70 @@ function AssessmentDashboardCell({
   }
 
   return <TD>-</TD>;
+}
+
+const assessmentTranslations = {
+  en: {
+    newRopaAnalysis: "New RoPA Analysis",
+    inProgress: "In Progress",
+    dueWithin7Days: "due within 7 days",
+    criticalProcessingReviews: "Critical processing reviews",
+    needsReview: "Needs review",
+    completion: "Completion",
+    completed: "completed",
+    open: "Open",
+    noOpenPrefix: "No",
+    noOpenSuffix: "items are currently open.",
+    todo: "Todo",
+    progress: "Progress",
+    done: "Done",
+    dueSoon: "Due Soon",
+    due: "Due",
+    noUrgentPrefix: "No urgent",
+    noUrgentSuffix: "due this week.",
+    completedSection: "Completed",
+    view: "View",
+    noCompletedPrefix: "No",
+    noCompletedSuffix: "items have been marked completed.",
+    deleteAssessmentConfirmPrefix: "Delete",
+    for: "for",
+  },
+  id: {
+    newRopaAnalysis: "Analisis RoPA Baru",
+    inProgress: "Sedang Berjalan",
+    dueWithin7Days: "jatuh tempo dalam 7 hari",
+    criticalProcessingReviews: "Review pemrosesan kritikal",
+    needsReview: "Perlu review",
+    completion: "Penyelesaian",
+    completed: "selesai",
+    open: "Terbuka",
+    noOpenPrefix: "Tidak ada",
+    noOpenSuffix: "yang masih terbuka.",
+    todo: "Todo",
+    progress: "Progress",
+    done: "Done",
+    dueSoon: "Jatuh Tempo Terdekat",
+    due: "Jatuh tempo",
+    noUrgentPrefix: "Tidak ada",
+    noUrgentSuffix: "urgent minggu ini.",
+    completedSection: "yang Sudah Dikerjakan",
+    view: "Lihat",
+    noCompletedPrefix: "Belum ada",
+    noCompletedSuffix: "yang ditandai selesai.",
+    deleteAssessmentConfirmPrefix: "Hapus",
+    for: "untuk",
+  },
+} as const;
+
+function createT(locale: Locale) {
+  return (key: `assessment.${keyof typeof assessmentTranslations.en}` | TranslationKey) => {
+    if (key.startsWith("assessment.")) {
+      const localKey = key.replace("assessment.", "") as keyof typeof assessmentTranslations.en;
+      return assessmentTranslations[locale][localKey];
+    }
+
+    return translate(locale, key as TranslationKey);
+  };
 }
 
 function MiniMetric({ label, value }: { label: string; value: number }) {

@@ -9,6 +9,8 @@ import { Select } from "@/components/ui/form";
 import { Table, TBody, TD, TH, THead } from "@/components/ui/table";
 import { requireViewer, toAccessScope } from "@/lib/access";
 import { getDepartments, getModuleColumnSettings, listRopa } from "@/lib/data";
+import { getCurrentLocale } from "@/lib/i18n-server";
+import type { Locale } from "@/lib/i18n";
 import { getModuleColumnDefinitions } from "@/lib/module-columns";
 import { formatDate } from "@/lib/utils";
 
@@ -24,6 +26,8 @@ type RegistryPageProps = {
 
 export default async function RegistryPage({ searchParams }: RegistryPageProps) {
   const viewer = await requireViewer();
+  const locale = await getCurrentLocale();
+  const text = registryText[locale];
   const scope = toAccessScope(viewer);
   const filters = await searchParams;
   const [rows, departments, columnSettings] = await Promise.all([
@@ -95,8 +99,8 @@ export default async function RegistryPage({ searchParams }: RegistryPageProps) 
           >
             <Download className="h-4 w-4" />
             {selectedDepartment
-              ? `Download RoPA ${selectedDepartment.name}`
-              : "Download RoPA per Departemen"}
+              ? `${text.downloadRopa} ${selectedDepartment.name}`
+              : text.downloadRopaByDepartment}
           </Link>
         </div>
       </div>
@@ -167,6 +171,7 @@ export default async function RegistryPage({ searchParams }: RegistryPageProps) 
                       key={column.key}
                       columnKey={column.key}
                       activity={activity}
+                      locale={locale}
                     />
                   ))}
                 </tr>
@@ -177,14 +182,16 @@ export default async function RegistryPage({ searchParams }: RegistryPageProps) 
                   colSpan={visibleColumns.length}
                   className="py-8 text-center text-slate-500"
                 >
-                  Belum ada aktivitas RoPA.
+                  {text.noRopaActivities}
                 </TD>
               </tr>
             )}
           </TBody>
         </Table>
         <div className="flex flex-col justify-between gap-3 border-t border-slate-100 px-5 py-4 text-sm text-slate-600 md:flex-row md:items-center">
-          <span>Showing {rows.length} of {rows.length} entries</span>
+          <span>
+            {text.showing} {rows.length} {text.of} {rows.length} {text.entries}
+          </span>
         </div>
       </Card>
 
@@ -221,7 +228,7 @@ export default async function RegistryPage({ searchParams }: RegistryPageProps) 
               </div>
             ) : (
               <p className="rounded border border-dashed border-slate-200 p-4 text-sm text-slate-500">
-                Belum ada data untuk distribusi registry.
+                {text.noDistributionData}
               </p>
             )}
           </CardContent>
@@ -239,7 +246,7 @@ export default async function RegistryPage({ searchParams }: RegistryPageProps) 
             <Link href="/ropa/new" className="mt-6 inline-block">
               <Button variant="secondary">
                 <Plus className="h-4 w-4" />
-                Tambah Aktivitas
+                {text.addActivity}
               </Button>
             </Link>
           </CardContent>
@@ -252,10 +259,13 @@ export default async function RegistryPage({ searchParams }: RegistryPageProps) 
 function RopaRegistryCell({
   columnKey,
   activity,
+  locale,
 }: {
   columnKey: string;
   activity: Awaited<ReturnType<typeof listRopa>>[number];
+  locale: Locale;
 }) {
+  const text = registryText[locale];
   if (columnKey === "activityName") {
     return <TD className="font-bold text-slate-950">{activity.activityName}</TD>;
   }
@@ -311,7 +321,7 @@ function RopaRegistryCell({
   if (columnKey === "obligations") {
     return (
       <TD>
-        <ObligationLinks assessments={activity.assessments} />
+        <ObligationLinks assessments={activity.assessments} locale={locale} />
       </TD>
     );
   }
@@ -326,7 +336,7 @@ function RopaRegistryCell({
         {activity.isCrossBorder ? (
           <Badge tone="yellow">{activity.destinationCountry || "Cross-border"}</Badge>
         ) : (
-          <span className="text-slate-500">Tidak</span>
+          <span className="text-slate-500">{text.no}</span>
         )}
       </TD>
     );
@@ -348,8 +358,7 @@ function RopaRegistryCell({
           </Link>
           <DeleteActionButton
             endpoint={`/api/ropa/${activity.id}`}
-            label="Hapus"
-            confirmMessage={`Hapus aktivitas RoPA "${activity.activityName}" beserta semua DPIA/TIA/LIA terkait?`}
+            confirmMessage={`${text.deleteRopaConfirm} "${activity.activityName}" ${text.deleteRopaConfirmSuffix}`}
           />
         </div>
       </TD>
@@ -370,6 +379,7 @@ function RiskBadge({ risk }: { risk: string }) {
 
 function ObligationLinks({
   assessments,
+  locale,
 }: {
   assessments: Array<{
     id: string;
@@ -377,9 +387,11 @@ function ObligationLinks({
     status: "Todo" | "In Progress" | "Done";
     severity: "Required" | "Critical";
   }>;
+  locale: Locale;
 }) {
+  const text = registryText[locale];
   if (!assessments.length) {
-    return <span className="text-xs text-slate-400">Tidak ada trigger</span>;
+    return <span className="text-xs text-slate-400">{text.noTrigger}</span>;
   }
 
   return (
@@ -413,3 +425,34 @@ function buttonVariantSecondary(disabled: boolean) {
     disabled ? "pointer-events-none opacity-50" : ""
   }`;
 }
+
+const registryText = {
+  en: {
+    downloadRopa: "Download RoPA",
+    downloadRopaByDepartment: "Download RoPA by Department",
+    noRopaActivities: "No RoPA activities yet.",
+    showing: "Showing",
+    of: "of",
+    entries: "entries",
+    noDistributionData: "No registry distribution data yet.",
+    addActivity: "Add Activity",
+    no: "No",
+    deleteRopaConfirm: "Delete RoPA activity",
+    deleteRopaConfirmSuffix: "and all related DPIA/TIA/LIA tasks?",
+    noTrigger: "No trigger",
+  },
+  id: {
+    downloadRopa: "Download RoPA",
+    downloadRopaByDepartment: "Download RoPA per Departemen",
+    noRopaActivities: "Belum ada aktivitas RoPA.",
+    showing: "Menampilkan",
+    of: "dari",
+    entries: "entri",
+    noDistributionData: "Belum ada data untuk distribusi registry.",
+    addActivity: "Tambah Aktivitas",
+    no: "Tidak",
+    deleteRopaConfirm: "Hapus aktivitas RoPA",
+    deleteRopaConfirmSuffix: "beserta semua DPIA/TIA/LIA terkait?",
+    noTrigger: "Tidak ada trigger",
+  },
+} as const satisfies Record<Locale, Record<string, string>>;
