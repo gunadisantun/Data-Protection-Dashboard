@@ -148,6 +148,9 @@ export function AiImpactWorkspace({
   }));
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [activeTab, setActiveTab] = useState<
+    "context" | "links" | "impact" | "fria" | "data-protection"
+  >("context");
   const isImportedFromRopa = Boolean(assessment.primaryRopaId);
 
   const related = useMemo(
@@ -253,7 +256,60 @@ export function AiImpactWorkspace({
         </div>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+      <Card>
+        <CardContent className="grid gap-3 p-3 sm:grid-cols-5">
+          {[
+            { id: "context", label: t.context, meta: form.aiSystem || "-" },
+            {
+              id: "links",
+              label: t.linkedAssessments,
+              meta: assessment.primaryRopaId ? "RoPA linked" : "Standalone",
+            },
+            {
+              id: "impact",
+              label: t.impact,
+              meta: `${form.impactDomains.length} domains`,
+            },
+            {
+              id: "fria",
+              label: t.fria,
+              meta: assessment.friaStatus,
+            },
+            {
+              id: "data-protection",
+              label: t.dp,
+              meta: form.dataProtection.processesPersonalData,
+            },
+          ].map((tab, index) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id as typeof activeTab)}
+              className={`min-h-24 rounded-2xl border px-4 py-3 text-left transition ${
+                activeTab === tab.id
+                  ? "border-blue-200 bg-blue-50 text-blue-700 shadow-sm"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-blue-100 hover:bg-slate-50"
+              }`}
+            >
+              <span
+                className={`inline-flex h-9 w-9 items-center justify-center rounded-2xl text-sm font-bold ${
+                  activeTab === tab.id
+                    ? "bg-blue-600 text-white"
+                    : "bg-slate-100 text-slate-500"
+                }`}
+              >
+                {index + 1}
+              </span>
+              <span className="mt-3 block text-sm font-bold">{tab.label}</span>
+              <span className="mt-1 block truncate text-xs font-semibold opacity-75">
+                {tab.meta}
+              </span>
+            </button>
+          ))}
+        </CardContent>
+      </Card>
+
+      {activeTab === "context" ? (
         <Card>
           <CardHeader>
             <CardTitle>{t.context}</CardTitle>
@@ -277,7 +333,9 @@ export function AiImpactWorkspace({
             <TextInput label={t.approval} value={form.approvalStatus} onChange={(value) => setForm({ ...form, approvalStatus: value })} />
           </CardContent>
         </Card>
+      ) : null}
 
+      {activeTab === "links" ? (
         <Card>
           <CardHeader>
             <CardTitle>{t.linkedAssessments}</CardTitle>
@@ -322,8 +380,9 @@ export function AiImpactWorkspace({
             ) : null}
           </CardContent>
         </Card>
-      </div>
+      ) : null}
 
+      {activeTab === "impact" ? (
       <Card>
         <CardHeader>
           <CardTitle>{t.impact}</CardTitle>
@@ -343,8 +402,9 @@ export function AiImpactWorkspace({
           ))}
         </CardContent>
       </Card>
+      ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-2">
+      {activeTab === "fria" ? (
         <Card>
           <CardHeader>
             <CardTitle>{t.fria}</CardTitle>
@@ -399,7 +459,9 @@ export function AiImpactWorkspace({
             ))}
           </CardContent>
         </Card>
+      ) : null}
 
+      {activeTab === "data-protection" ? (
         <Card>
           <CardHeader>
             <CardTitle>{t.dp}</CardTitle>
@@ -482,7 +544,7 @@ export function AiImpactWorkspace({
             </div>
           </CardContent>
         </Card>
-      </div>
+      ) : null}
     </div>
   );
 }
