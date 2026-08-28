@@ -1,7 +1,9 @@
 import { FaqKnowledgeCenter } from "@/components/faq-knowledge-center";
 import { requireViewer, toAccessScope } from "@/lib/access";
-import { getFaqKnowledgeCenter } from "@/lib/data";
-import { getLegalMappingTrackerData } from "@/lib/legal-mapping";
+import {
+  getFaqKnowledgeCenter,
+  getLegalMappingTrackerWithOverrides,
+} from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +11,7 @@ export default async function FaqPage() {
   const viewer = await requireViewer();
   const [data, legalMapping] = await Promise.all([
     getFaqKnowledgeCenter(toAccessScope(viewer)),
-    getLegalMappingTrackerData(),
+    getLegalMappingTrackerWithOverrides(),
   ]);
 
   return (

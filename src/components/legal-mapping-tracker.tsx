@@ -2,10 +2,20 @@
 
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { BookMarked, ChevronDown, Gavel, Link2, Search } from "lucide-react";
+import {
+  BookMarked,
+  ChevronDown,
+  Gavel,
+  Link2,
+  Loader2,
+  Pencil,
+  Save,
+  Search,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/form";
+import { Input, Label, Textarea } from "@/components/ui/form";
 import { useI18n } from "@/components/language-provider";
 import type {
   LegalMappingDirection,
@@ -15,6 +25,7 @@ import type {
 
 type LegalMappingTrackerProps = {
   data: LegalMappingTrackerData;
+  canEdit?: boolean;
 };
 
 type TrackerLocale = {
@@ -36,6 +47,12 @@ type TrackerLocale = {
   uuArticle: string;
   ppArticle: string;
   ppExplanation: string;
+  edit: string;
+  cancel: string;
+  save: string;
+  saving: string;
+  saved: string;
+  saveFailed: string;
   empty: string;
   expand: string;
   collapse: string;
@@ -62,6 +79,12 @@ const copy: Record<"en" | "id", TrackerLocale> = {
     uuArticle: "UU PDP Article",
     ppArticle: "PP 33/2026 Article",
     ppExplanation: "Official PP explanation",
+    edit: "Edit content",
+    cancel: "Cancel",
+    save: "Save changes",
+    saving: "Saving...",
+    saved: "Mapping content saved.",
+    saveFailed: "Failed to save mapping content.",
     empty: "No mapping matches the current search.",
     expand: "Expand",
     collapse: "Collapse",
@@ -86,22 +109,41 @@ const copy: Record<"en" | "id", TrackerLocale> = {
     uuArticle: "Pasal UU PDP",
     ppArticle: "Pasal PP 33/2026",
     ppExplanation: "Penjelasan resmi PP",
+    edit: "Edit isi",
+    cancel: "Batal",
+    save: "Simpan perubahan",
+    saving: "Menyimpan...",
+    saved: "Isi mapping berhasil disimpan.",
+    saveFailed: "Gagal menyimpan isi mapping.",
     empty: "Tidak ada mapping yang sesuai pencarian.",
     expand: "Buka",
     collapse: "Tutup",
   },
 };
 
-export function LegalMappingTracker({ data }: LegalMappingTrackerProps) {
+type MappingDraft = Pick<
+  LegalMappingEntry,
+  | "topik"
+  | "pasalUu"
+  | "isiPasalUu"
+  | "pasalPp"
+  | "isiPasalPp"
+  | "penjelasanResmiPp"
+  | "catatanMapping"
+  | "jenisHubungan"
+>;
+
+export function LegalMappingTracker({ canEdit = false, data }: LegalMappingTrackerProps) {
   const { locale } = useI18n();
   const labels = copy[locale];
+  const [trackerData, setTrackerData] = useState(data);
   const [direction, setDirection] = useState<LegalMappingDirection>("UU_TO_PP");
   const [query, setQuery] = useState("");
   const [expandedChapter, setExpandedChapter] = useState<string>("");
   const [expandedTopic, setExpandedTopic] = useState<string>("");
   const [expandedArticle, setExpandedArticle] = useState<string>("");
 
-  const rows = direction === "UU_TO_PP" ? data.uuToPp : data.ppToUu;
+  const rows = direction === "UU_TO_PP" ? trackerData.uuToPp : trackerData.ppToUu;
   const searchedRows = useMemo(() => filterRows(rows, query), [query, rows]);
   const chapters = useMemo(
     () => groupRows(searchedRows, direction),
@@ -134,9 +176,9 @@ export function LegalMappingTracker({ data }: LegalMappingTrackerProps) {
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:min-w-[520px]">
-            <MetricCard label={labels.uuCoverage} value={data.coverage.uuCoverage} />
-            <MetricCard label={labels.ppCoverage} value={data.coverage.ppCoverage} />
-            <MetricCard label={labels.chapters} value={String(data.coverage.babCount)} />
+            <MetricCard label={labels.uuCoverage} value={trackerData.coverage.uuCoverage} />
+            <MetricCard label={labels.ppCoverage} value={trackerData.coverage.ppCoverage} />
+            <MetricCard label={labels.chapters} value={String(trackerData.coverage.babCount)} />
             <MetricCard label={labels.mappingRows} value={String(totalRows)} />
           </div>
         </div>
@@ -254,7 +296,11 @@ export function LegalMappingTracker({ data }: LegalMappingTrackerProps) {
                                       article={article}
                                       labels={labels}
                                       direction={direction}
+                                      canEdit={canEdit}
                                       open={articleOpen}
+                                      onSaved={(entry) =>
+                                        setTrackerData((current) => updateTrackerEntry(current, entry))
+                                      }
                                       onToggle={() =>
                                         setExpandedArticle((current) =>
                                           current === articleKey ? "" : articleKey,
@@ -295,14 +341,18 @@ function MetricCard({ label, value }: { label: string; value: string }) {
 
 function ArticleAccordion({
   article,
+  canEdit,
   direction,
   labels,
+  onSaved,
   onToggle,
   open,
 }: {
   article: ArticleGroup;
+  canEdit: boolean;
   direction: LegalMappingDirection;
   labels: TrackerLocale;
+  onSaved: (entry: LegalMappingEntry) => void;
   onToggle: () => void;
   open: boolean;
 }) {
@@ -342,8 +392,10 @@ function ArticleAccordion({
           {article.rows.map((entry) => (
             <MappingDetail
               key={entry.id}
+              canEdit={canEdit}
               entry={entry}
               labels={labels}
+              onSaved={onSaved}
             />
           ))}
         </div>
@@ -352,29 +404,184 @@ function ArticleAccordion({
   );
 }
 
-function MappingDetail({ entry, labels }: { entry: LegalMappingEntry; labels: TrackerLocale }) {
+function MappingDetail({
+  canEdit,
+  entry,
+  labels,
+  onSaved,
+}: {
+  canEdit: boolean;
+  entry: LegalMappingEntry;
+  labels: TrackerLocale;
+  onSaved: (entry: LegalMappingEntry) => void;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [draft, setDraft] = useState<MappingDraft>(() => toDraft(entry));
+
+  function startEditing() {
+    setDraft(toDraft(entry));
+    setMessage("");
+    setError("");
+    setIsEditing(true);
+  }
+
+  async function saveDraft() {
+    setError("");
+    setMessage("");
+    setIsSaving(true);
+    const response = await fetch("/api/faq/legal-mapping", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entryId: entry.id,
+        patch: draft,
+      }),
+    });
+
+    if (!response.ok) {
+      setError(labels.saveFailed);
+      setIsSaving(false);
+      return;
+    }
+
+    const updated = { ...entry, ...draft };
+    onSaved(updated);
+    setIsEditing(false);
+    setMessage(labels.saved);
+    setIsSaving(false);
+  }
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Badge tone="slate">{labels.sourceRow}: {entry.sourceRow}</Badge>
-        {entry.jenisHubungan ? <Badge tone="purple">{entry.jenisHubungan}</Badge> : null}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone="slate">{labels.sourceRow}: {entry.sourceRow}</Badge>
+          {entry.jenisHubungan ? <Badge tone="purple">{entry.jenisHubungan}</Badge> : null}
+        </div>
+        {canEdit ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={isEditing ? () => setIsEditing(false) : startEditing}
+            disabled={isSaving}
+          >
+            <Pencil className="h-4 w-4" />
+            {isEditing ? labels.cancel : labels.edit}
+          </Button>
+        ) : null}
       </div>
-      <div className="grid gap-3 lg:grid-cols-2">
-        <LegalTextBlock
-          icon={<Gavel className="h-4 w-4" />}
-          title={`${labels.uuArticle}: ${entry.pasalUu || "-"}`}
-          body={entry.isiPasalUu}
-        />
-        <LegalTextBlock
-          icon={<Link2 className="h-4 w-4" />}
-          title={`${labels.ppArticle}: ${entry.pasalPp || "-"}`}
-          body={entry.isiPasalPp}
-        />
-      </div>
-      <div className="mt-3 grid gap-3 lg:grid-cols-2">
-        <InfoBlock title={labels.ppExplanation} body={entry.penjelasanResmiPp || "-"} />
-        <InfoBlock title={labels.mappingNote} body={entry.catatanMapping || "-"} />
-      </div>
+
+      {isEditing ? (
+        <div className="space-y-4">
+          <div className="grid gap-3 lg:grid-cols-3">
+            <div>
+              <Label>{labels.topics}</Label>
+              <Input
+                value={draft.topik}
+                onChange={(event) => setDraft((current) => ({ ...current, topik: event.target.value }))}
+              />
+            </div>
+            <div>
+              <Label>{labels.uuArticle}</Label>
+              <Input
+                value={draft.pasalUu}
+                onChange={(event) => setDraft((current) => ({ ...current, pasalUu: event.target.value }))}
+              />
+            </div>
+            <div>
+              <Label>{labels.ppArticle}</Label>
+              <Input
+                value={draft.pasalPp}
+                onChange={(event) => setDraft((current) => ({ ...current, pasalPp: event.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="grid gap-3 lg:grid-cols-2">
+            <div>
+              <Label>{labels.uuArticle}</Label>
+              <Textarea
+                rows={7}
+                value={draft.isiPasalUu}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, isiPasalUu: event.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <Label>{labels.ppArticle}</Label>
+              <Textarea
+                rows={7}
+                value={draft.isiPasalPp}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, isiPasalPp: event.target.value }))
+                }
+              />
+            </div>
+          </div>
+          <div className="grid gap-3 lg:grid-cols-2">
+            <div>
+              <Label>{labels.ppExplanation}</Label>
+              <Textarea
+                rows={4}
+                value={draft.penjelasanResmiPp}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, penjelasanResmiPp: event.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <Label>{labels.mappingNote}</Label>
+              <Textarea
+                rows={4}
+                value={draft.catatanMapping}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, catatanMapping: event.target.value }))
+                }
+              />
+            </div>
+          </div>
+          <div>
+            <Label>{labels.relationship}</Label>
+            <Input
+              value={draft.jenisHubungan}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, jenisHubungan: event.target.value }))
+              }
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button type="button" onClick={() => void saveDraft()} disabled={isSaving}>
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {isSaving ? labels.saving : labels.save}
+            </Button>
+            {error ? <span className="text-sm font-semibold text-red-600">{error}</span> : null}
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="grid gap-3 lg:grid-cols-2">
+            <LegalTextBlock
+              icon={<Gavel className="h-4 w-4" />}
+              title={`${labels.uuArticle}: ${entry.pasalUu || "-"}`}
+              body={entry.isiPasalUu}
+            />
+            <LegalTextBlock
+              icon={<Link2 className="h-4 w-4" />}
+              title={`${labels.ppArticle}: ${entry.pasalPp || "-"}`}
+              body={entry.isiPasalPp}
+            />
+          </div>
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            <InfoBlock title={labels.ppExplanation} body={entry.penjelasanResmiPp || "-"} />
+            <InfoBlock title={labels.mappingNote} body={entry.catatanMapping || "-"} />
+          </div>
+          {message ? <p className="mt-3 text-sm font-semibold text-emerald-700">{message}</p> : null}
+        </>
+      )}
     </div>
   );
 }
@@ -502,4 +709,31 @@ function filterRows(rows: LegalMappingEntry[], query: string) {
       .toLowerCase()
       .includes(normalized),
   );
+}
+
+function toDraft(entry: LegalMappingEntry): MappingDraft {
+  return {
+    topik: entry.topik,
+    pasalUu: entry.pasalUu,
+    isiPasalUu: entry.isiPasalUu,
+    pasalPp: entry.pasalPp,
+    isiPasalPp: entry.isiPasalPp,
+    penjelasanResmiPp: entry.penjelasanResmiPp,
+    catatanMapping: entry.catatanMapping,
+    jenisHubungan: entry.jenisHubungan,
+  };
+}
+
+function updateTrackerEntry(
+  data: LegalMappingTrackerData,
+  updatedEntry: LegalMappingEntry,
+): LegalMappingTrackerData {
+  const apply = (entry: LegalMappingEntry) =>
+    entry.id === updatedEntry.id ? updatedEntry : entry;
+
+  return {
+    coverage: data.coverage,
+    uuToPp: data.uuToPp.map(apply),
+    ppToUu: data.ppToUu.map(apply),
+  };
 }

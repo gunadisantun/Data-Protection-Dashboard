@@ -45,6 +45,12 @@ export async function getLegalMappingTrackerData(): Promise<LegalMappingTrackerD
 
 export async function getLegalMappingKnowledgeChunks(): Promise<KnowledgeChunkInput[]> {
   const data = await getLegalMappingTrackerData();
+  return buildLegalMappingKnowledgeChunks(data);
+}
+
+export function buildLegalMappingKnowledgeChunks(
+  data: LegalMappingTrackerData,
+): KnowledgeChunkInput[] {
   const sourceRows = [...data.uuToPp, ...data.ppToUu];
   const chunks: KnowledgeChunkInput[] = [];
 

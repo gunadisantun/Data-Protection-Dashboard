@@ -431,6 +431,24 @@ export const faqAskSchema = z.object({
     .max(500, "pertanyaan maksimal 500 karakter"),
 });
 
+export const legalMappingOverridePatchSchema = z.object({
+  entryId: z.string().trim().min(1, "entry wajib dipilih"),
+  patch: z
+    .object({
+      topik: z.string().trim().optional(),
+      pasalUu: z.string().trim().optional(),
+      isiPasalUu: z.string().trim().optional(),
+      pasalPp: z.string().trim().optional(),
+      isiPasalPp: z.string().trim().optional(),
+      penjelasanResmiPp: z.string().trim().optional(),
+      catatanMapping: z.string().trim().optional(),
+      jenisHubungan: z.string().trim().optional(),
+    })
+    .refine((value) => Object.keys(value).length > 0, {
+      message: "payload update kosong",
+    }),
+});
+
 export const sopMetadataSchema = z.object({
   title: z.string().trim().min(3, "judul dokumen minimal 3 karakter"),
   category: z.enum(["Kebijakan", "SOP", "Template"], {

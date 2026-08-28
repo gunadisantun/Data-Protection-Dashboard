@@ -619,7 +619,7 @@ export function FaqKnowledgeCenter({
         </CardContent>
       </Card>
 
-      <LegalMappingTracker data={legalMapping} />
+      <LegalMappingTracker data={legalMapping} canEdit={viewerRole === "MasterAdmin"} />
 
       <Card className="rounded-2xl">
         <CardHeader>

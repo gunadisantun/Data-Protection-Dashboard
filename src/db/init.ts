@@ -15,6 +15,7 @@ import {
   faqReferences,
   governanceSettings,
   knowledgeChunks,
+  legalMappingOverrides,
   moduleColumnSettings,
   privacyMapOverrides,
   riskRegisterEntries,
@@ -85,6 +86,7 @@ export async function resetAndSeedDatabase() {
   await db.delete(faqEntries);
   await db.delete(faqReferences);
   await db.delete(faqCategories);
+  await db.delete(legalMappingOverrides);
   await db.delete(riskRegisterEntries);
   await db.delete(assessmentLinks);
   await db.delete(aiImpactAssessments);

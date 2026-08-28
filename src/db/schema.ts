@@ -527,6 +527,20 @@ export const knowledgeChunks = pgTable("knowledge_chunks", {
   updatedAt: text("updated_at").notNull(),
 });
 
+export const legalMappingOverrides = pgTable("legal_mapping_overrides", {
+  id: text("id").primaryKey(),
+  entryId: text("entry_id").notNull().unique(),
+  patch: jsonb("patch")
+    .$type<Record<string, unknown>>()
+    .notNull()
+    .default({}),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+  updatedBy: text("updated_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+});
+
 export const privacyMapOverrides = pgTable("privacy_map_overrides", {
   id: text("id").primaryKey(),
   jurisdictionId: text("jurisdiction_id").notNull().unique(),

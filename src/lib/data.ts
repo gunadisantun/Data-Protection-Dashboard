@@ -15,6 +15,7 @@ import {
   faqReferences,
   governanceSettings,
   knowledgeChunks,
+  legalMappingOverrides,
   moduleColumnSettings,
   privacyMapOverrides,
   riskRegisterEntries,
@@ -32,7 +33,12 @@ import {
   splitKnowledgeContent,
   type KnowledgeChunkInput,
 } from "@/lib/knowledge";
-import { getLegalMappingKnowledgeChunks } from "@/lib/legal-mapping";
+import {
+  buildLegalMappingKnowledgeChunks,
+  getLegalMappingTrackerData,
+  type LegalMappingEntry,
+  type LegalMappingTrackerData,
+} from "@/lib/legal-mapping";
 import {
   getReferenceBucketName,
   getSelfAssessmentEvidenceBucketName,
@@ -1242,6 +1248,132 @@ type CreateFaqEntryPayload = {
 
 type UpdateFaqEntryPayload = Partial<CreateFaqEntryPayload>;
 
+export type LegalMappingOverridePatch = Partial<
+  Pick<
+    LegalMappingEntry,
+    | "topik"
+    | "pasalUu"
+    | "isiPasalUu"
+    | "pasalPp"
+    | "isiPasalPp"
+    | "penjelasanResmiPp"
+    | "catatanMapping"
+    | "jenisHubungan"
+  >
+>;
+
+type LegalMappingOverrideRecord = {
+  entryId: string;
+  patch: LegalMappingOverridePatch;
+  updatedAt: string;
+  updatedBy: string | null;
+};
+
+export async function listLegalMappingOverrides(): Promise<LegalMappingOverrideRecord[]> {
+  await ensureDatabase();
+  const rows = await db
+    .select({
+      entryId: legalMappingOverrides.entryId,
+      patch: legalMappingOverrides.patch,
+      updatedAt: legalMappingOverrides.updatedAt,
+      updatedBy: legalMappingOverrides.updatedBy,
+    })
+    .from(legalMappingOverrides);
+
+  return rows.map((row) => ({
+    entryId: row.entryId,
+    patch: row.patch as LegalMappingOverridePatch,
+    updatedAt: row.updatedAt,
+    updatedBy: row.updatedBy,
+  }));
+}
+
+export async function getLegalMappingTrackerWithOverrides() {
+  await ensureDatabase();
+  const [data, overrides] = await Promise.all([
+    getLegalMappingTrackerData(),
+    listLegalMappingOverrides(),
+  ]);
+  return applyLegalMappingOverrides(data, overrides);
+}
+
+export async function upsertLegalMappingOverride(input: {
+  entryId: string;
+  patch: LegalMappingOverridePatch;
+  userId: string;
+}) {
+  await ensureDatabase();
+  const baseData = await getLegalMappingTrackerData();
+  const exists = [...baseData.uuToPp, ...baseData.ppToUu].some(
+    (entry) => entry.id === input.entryId,
+  );
+  if (!exists) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  const id = `legal-mapping-override-${input.entryId}`;
+  await db
+    .insert(legalMappingOverrides)
+    .values({
+      id,
+      entryId: input.entryId,
+      patch: input.patch,
+      createdAt: now,
+      updatedAt: now,
+      updatedBy: input.userId,
+    })
+    .onConflictDoUpdate({
+      target: legalMappingOverrides.entryId,
+      set: {
+        patch: input.patch,
+        updatedAt: now,
+        updatedBy: input.userId,
+      },
+    });
+
+  const [row] = await db
+    .select({
+      entryId: legalMappingOverrides.entryId,
+      patch: legalMappingOverrides.patch,
+      updatedAt: legalMappingOverrides.updatedAt,
+      updatedBy: legalMappingOverrides.updatedBy,
+    })
+    .from(legalMappingOverrides)
+    .where(eq(legalMappingOverrides.entryId, input.entryId))
+    .limit(1);
+
+  return row
+    ? {
+        entryId: row.entryId,
+        patch: row.patch as LegalMappingOverridePatch,
+        updatedAt: row.updatedAt,
+        updatedBy: row.updatedBy,
+      }
+    : null;
+}
+
+function applyLegalMappingOverrides(
+  data: LegalMappingTrackerData,
+  overrides: LegalMappingOverrideRecord[],
+): LegalMappingTrackerData {
+  if (!overrides.length) {
+    return data;
+  }
+
+  const byEntryId = new Map(overrides.map((override) => [override.entryId, override.patch]));
+  const apply = (entry: LegalMappingEntry): LegalMappingEntry => ({
+    ...entry,
+    ...(byEntryId.get(entry.id) ?? {}),
+  });
+
+  return {
+    coverage: data.coverage,
+    uuToPp: data.uuToPp.map(apply),
+    ppToUu: data.ppToUu.map(apply),
+  };
+}
+
 export async function getFaqKnowledgeCenter(scope?: AccessScope) {
   await ensureDatabase();
 
@@ -1792,7 +1924,7 @@ export async function findRelevantKnowledgeChunks(question: string) {
     await syncKnowledgeChunksFromFaqCenter();
   }
 
-  const [rows, legalMappingChunks] = await Promise.all([
+  const [rows, legalMappingData] = await Promise.all([
     db
       .select({
         id: knowledgeChunks.id,
@@ -1804,8 +1936,9 @@ export async function findRelevantKnowledgeChunks(question: string) {
         metadata: knowledgeChunks.metadata,
       })
       .from(knowledgeChunks),
-    getLegalMappingKnowledgeChunks(),
+    getLegalMappingTrackerWithOverrides(),
   ]);
+  const legalMappingChunks = buildLegalMappingKnowledgeChunks(legalMappingData);
 
   return rankKnowledgeChunks(
     question,
