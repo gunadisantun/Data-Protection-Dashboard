@@ -16,6 +16,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label, Select, Textarea } from "@/components/ui/form";
+import { LegalMappingTracker } from "@/components/legal-mapping-tracker";
+import type { LegalMappingTrackerData } from "@/lib/legal-mapping";
 
 type FaqCategory = {
   id: string;
@@ -86,6 +88,7 @@ type FaqKnowledgeCenterProps = {
   categories: FaqCategory[];
   references: FaqReference[];
   sopDocuments: SopDocument[];
+  legalMapping: LegalMappingTrackerData;
 };
 
 type FaqDraft = {
@@ -178,6 +181,7 @@ function renderAiAnswerLine(line: string) {
 export function FaqKnowledgeCenter({
   viewerRole,
   categories,
+  legalMapping,
   references,
   sopDocuments,
 }: FaqKnowledgeCenterProps) {
@@ -614,6 +618,8 @@ export function FaqKnowledgeCenter({
           ) : null}
         </CardContent>
       </Card>
+
+      <LegalMappingTracker data={legalMapping} />
 
       <Card className="rounded-2xl">
         <CardHeader>

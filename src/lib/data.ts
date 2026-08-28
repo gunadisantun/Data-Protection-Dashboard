@@ -32,6 +32,7 @@ import {
   splitKnowledgeContent,
   type KnowledgeChunkInput,
 } from "@/lib/knowledge";
+import { getLegalMappingKnowledgeChunks } from "@/lib/legal-mapping";
 import {
   getReferenceBucketName,
   getSelfAssessmentEvidenceBucketName,
@@ -1791,29 +1792,35 @@ export async function findRelevantKnowledgeChunks(question: string) {
     await syncKnowledgeChunksFromFaqCenter();
   }
 
-  const rows = await db
-    .select({
-      id: knowledgeChunks.id,
-      sourceType: knowledgeChunks.sourceType,
-      sourceId: knowledgeChunks.sourceId,
-      title: knowledgeChunks.title,
-      content: knowledgeChunks.content,
-      url: knowledgeChunks.url,
-      metadata: knowledgeChunks.metadata,
-    })
-    .from(knowledgeChunks);
+  const [rows, legalMappingChunks] = await Promise.all([
+    db
+      .select({
+        id: knowledgeChunks.id,
+        sourceType: knowledgeChunks.sourceType,
+        sourceId: knowledgeChunks.sourceId,
+        title: knowledgeChunks.title,
+        content: knowledgeChunks.content,
+        url: knowledgeChunks.url,
+        metadata: knowledgeChunks.metadata,
+      })
+      .from(knowledgeChunks),
+    getLegalMappingKnowledgeChunks(),
+  ]);
 
   return rankKnowledgeChunks(
     question,
-    rows.map((row) => ({
-      id: row.id,
-      sourceType: row.sourceType,
-      sourceId: row.sourceId,
-      title: row.title,
-      content: row.content,
-      url: row.url,
-      metadata: row.metadata,
-    })),
+    [
+      ...rows.map((row) => ({
+        id: row.id,
+        sourceType: row.sourceType,
+        sourceId: row.sourceId,
+        title: row.title,
+        content: row.content,
+        url: row.url,
+        metadata: row.metadata,
+      })),
+      ...legalMappingChunks,
+    ],
   );
 }
 
