@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { isDesktopSetupRequired } from "@/db/init";
 import { auth } from "@/lib/auth";
 import { resolveLoginEmailFromDatabase } from "@/lib/data";
+import { isOfflineRuntime } from "@/lib/offline-runtime";
 
 const loginSchema = z.object({
   username: z.string().trim().min(1, "Username wajib diisi."),
@@ -9,6 +11,15 @@ const loginSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  if (isOfflineRuntime() && (await isDesktopSetupRequired())) {
+    return NextResponse.json(
+      {
+        error: "Desktop setup is required before login.",
+      },
+      { status: 403 },
+    );
+  }
+
   const body = await request.json().catch(() => null);
   const parsed = loginSchema.safeParse(body);
 

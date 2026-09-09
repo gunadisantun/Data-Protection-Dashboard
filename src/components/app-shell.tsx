@@ -51,6 +51,7 @@ export type AppShellViewer = {
   departmentName?: string | null;
   isDemo?: boolean;
   isOfflineDesktop?: boolean;
+  appVersion?: string;
   breachAlert?: BreachAlert | null;
 };
 
@@ -365,6 +366,11 @@ export function AppShell({
             <span className="block text-[11px] font-semibold leading-4 text-slate-400">
               {t("shell.tagline")}
             </span>
+            {viewer.isOfflineDesktop ? (
+              <span className="mt-1 inline-flex rounded-full border border-white/10 bg-white/8 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-cyan-100">
+                {t("shell.desktopVersion")} {viewer.appVersion ?? "0.1.0"}
+              </span>
+            ) : null}
           </span>
         </Link>
 
@@ -523,6 +529,11 @@ export function AppShell({
                     <p className="mt-1 truncate text-xs font-semibold text-slate-500">
                       {viewer.role} - {viewer.departmentName ?? t("common.allDepartments")}
                     </p>
+                    {viewer.isOfflineDesktop ? (
+                      <p className="mt-2 inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">
+                        {t("shell.desktopVersion")} {viewer.appVersion ?? "0.1.0"}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="h-px bg-slate-100" />
                   <ProfileMenuLink
@@ -577,6 +588,11 @@ export function AppShell({
                   <span className="block text-[11px] font-semibold leading-4 text-slate-300">
                     {t("shell.tagline")}
                   </span>
+                  {viewer.isOfflineDesktop ? (
+                    <span className="mt-1 inline-flex rounded-full border border-white/10 bg-white/8 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-cyan-100">
+                      {t("shell.desktopVersion")} {viewer.appVersion ?? "0.1.0"}
+                    </span>
+                  ) : null}
                 </span>
               </Link>
               <Button

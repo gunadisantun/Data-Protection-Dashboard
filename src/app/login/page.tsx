@@ -3,6 +3,7 @@ import { LoginForm } from "@/components/login-form";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { ensureDatabase, isDesktopSetupRequired } from "@/db/init";
 import { getViewer } from "@/lib/access";
+import { getAppVersion } from "@/lib/app-version";
 import { getCurrentLocale } from "@/lib/i18n-server";
 import { translate } from "@/lib/i18n";
 import { isOfflineRuntime } from "@/lib/offline-runtime";
@@ -36,6 +37,11 @@ export default async function LoginPage() {
           <p className="mt-2 text-sm text-slate-600">
             {translate(locale, "login.subtitle")}
           </p>
+          {isOfflineDesktop ? (
+            <p className="mt-2 text-xs font-bold uppercase tracking-[0.16em] text-blue-600">
+              {translate(locale, "shell.desktopVersion")} {getAppVersion()}
+            </p>
+          ) : null}
         </div>
         <LoginForm
           showDemo={!isOfflineDesktop}

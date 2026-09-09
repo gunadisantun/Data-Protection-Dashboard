@@ -59,6 +59,7 @@ export const dictionaries = {
       draft: "Draft",
       latestReport: "Latest report",
       reviewNow: "Review Now",
+      desktopVersion: "Desktop Version",
     },
     nav: {
       dashboard: "Dashboard",
@@ -240,6 +241,7 @@ export const dictionaries = {
       draft: "Draft",
       latestReport: "Laporan terbaru",
       reviewNow: "Tinjau Sekarang",
+      desktopVersion: "Versi Desktop",
     },
     nav: {
       dashboard: "Dashboard",

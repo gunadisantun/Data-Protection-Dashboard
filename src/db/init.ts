@@ -246,8 +246,8 @@ export async function isDesktopSetupRequired() {
   }
 
   await ensureDatabase();
-  const [existing] = await db.select({ value: count() }).from(users);
-  return (existing?.value ?? 0) === 0;
+  const state = await getDesktopSetupState();
+  return state.required;
 }
 
 export async function createDesktopMasterAdmin(payload: {
@@ -261,8 +261,8 @@ export async function createDesktopMasterAdmin(payload: {
   }
 
   await ensureDatabase();
-  const [existing] = await db.select({ value: count() }).from(users);
-  if ((existing?.value ?? 0) > 0) {
+  const setupState = await getDesktopSetupState();
+  if (!setupState.required) {
     return null;
   }
 
@@ -273,6 +273,10 @@ export async function createDesktopMasterAdmin(payload: {
   const passwordHash = await hashPassword(payload.password.trim());
 
   await db.transaction(async (tx) => {
+    if (setupState.legacySeedOnly) {
+      await removeLegacyDesktopSeedUsers(tx);
+    }
+
     await tx.insert(users).values({
       id,
       username: payload.username.trim(),
@@ -320,6 +324,127 @@ export async function createDesktopMasterAdmin(payload: {
   });
 
   return { username: payload.username.trim(), email };
+}
+
+async function getDesktopSetupState() {
+  const existingUsers = await db.select({ id: users.id }).from(users);
+
+  if (existingUsers.length === 0) {
+    return { required: true, legacySeedOnly: false };
+  }
+
+  const seedUserIds = new Set(seedUsers.map((seedUser) => seedUser.id));
+  const containsOnlySeedUsers = existingUsers.every((item) => seedUserIds.has(item.id));
+
+  if (!containsOnlySeedUsers) {
+    return { required: false, legacySeedOnly: false };
+  }
+
+  const hasUserData = await hasDesktopUserData();
+
+  return {
+    required: !hasUserData,
+    legacySeedOnly: !hasUserData,
+  };
+}
+
+async function hasDesktopUserData() {
+  const dataTables = [
+    ropaActivities,
+    assessments,
+    aiImpactAssessments,
+    assessmentLinks,
+    riskRegisterEntries,
+    auditEvents,
+    breachReports,
+    selfAssessments,
+    sopDocuments,
+    moduleColumnSettings,
+    legalMappingOverrides,
+    privacyMapOverrides,
+  ];
+
+  for (const table of dataTables) {
+    const [existing] = await db.select({ value: count() }).from(table);
+    if ((existing?.value ?? 0) > 0) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+async function removeLegacyDesktopSeedUsers(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+) {
+  for (const seedUser of seedUsers) {
+    const id = seedUser.id;
+
+    await tx
+      .update(ropaActivities)
+      .set({ userId: null })
+      .where(eq(ropaActivities.userId, id));
+    await tx
+      .update(governanceSettings)
+      .set({ updatedBy: null })
+      .where(eq(governanceSettings.updatedBy, id));
+    await tx
+      .update(moduleColumnSettings)
+      .set({ updatedBy: null })
+      .where(eq(moduleColumnSettings.updatedBy, id));
+    await tx
+      .update(faqEntries)
+      .set({ createdBy: null })
+      .where(eq(faqEntries.createdBy, id));
+    await tx
+      .update(faqEntries)
+      .set({ updatedBy: null })
+      .where(eq(faqEntries.updatedBy, id));
+    await tx
+      .update(breachReports)
+      .set({ reportedBy: null })
+      .where(eq(breachReports.reportedBy, id));
+    await tx
+      .update(breachReports)
+      .set({ finalizedBy: null })
+      .where(eq(breachReports.finalizedBy, id));
+    await tx
+      .update(selfAssessments)
+      .set({ createdBy: null })
+      .where(eq(selfAssessments.createdBy, id));
+    await tx
+      .update(selfAssessments)
+      .set({ finalizedBy: null })
+      .where(eq(selfAssessments.finalizedBy, id));
+    await tx
+      .update(aiImpactAssessments)
+      .set({ createdBy: null })
+      .where(eq(aiImpactAssessments.createdBy, id));
+    await tx
+      .update(aiImpactAssessments)
+      .set({ updatedBy: null })
+      .where(eq(aiImpactAssessments.updatedBy, id));
+    await tx
+      .update(assessmentLinks)
+      .set({ createdBy: null })
+      .where(eq(assessmentLinks.createdBy, id));
+    await tx
+      .update(legalMappingOverrides)
+      .set({ updatedBy: null })
+      .where(eq(legalMappingOverrides.updatedBy, id));
+    await tx
+      .update(privacyMapOverrides)
+      .set({ updatedBy: null })
+      .where(eq(privacyMapOverrides.updatedBy, id));
+    await tx
+      .update(auditEvents)
+      .set({ actorId: null })
+      .where(eq(auditEvents.actorId, id));
+    await tx.delete(session).where(eq(session.userId, id));
+    await tx.delete(account).where(eq(account.userId, id));
+    await tx.delete(user).where(eq(user.id, id));
+    await tx.delete(users).where(eq(users.id, id));
+  }
 }
 
 async function syncFaqReferenceMetadata() {
