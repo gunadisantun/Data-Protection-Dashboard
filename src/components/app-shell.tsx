@@ -50,6 +50,7 @@ export type AppShellViewer = {
   role: "MasterAdmin" | "DPO" | "User";
   departmentName?: string | null;
   isDemo?: boolean;
+  isOfflineDesktop?: boolean;
   breachAlert?: BreachAlert | null;
 };
 
@@ -453,7 +454,9 @@ export function AppShell({
             <span className="text-sm">{t("shell.searchPlaceholder")}</span>
           </div>
           <div className="ml-auto flex items-center gap-2 text-slate-500 sm:gap-3">
-            {!viewer.isDemo ? <DesktopDownloadButton /> : null}
+            {!viewer.isDemo && !viewer.isOfflineDesktop ? (
+              <DesktopDownloadButton />
+            ) : null}
             <LanguageSwitcher compact />
             <span className="hidden text-xs font-semibold text-slate-500 lg:inline">
               Privacy Bro

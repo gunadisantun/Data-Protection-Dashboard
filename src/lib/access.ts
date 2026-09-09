@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getDemoDepartmentId, getDemoUserId } from "@/lib/demo";
+import { isOfflineRuntime } from "@/lib/offline-runtime";
 import type { AccessScope } from "@/lib/data";
 
 export const demoSessionCookieName = "privacy_bro_demo_session";
@@ -61,7 +62,7 @@ function mapSessionToViewer(session: SessionShape | null): Viewer | null {
 
 export const getViewer = cache(async () => {
   const demoSessionId = (await cookies()).get(demoSessionCookieName)?.value;
-  if (demoSessionId) {
+  if (demoSessionId && !isOfflineRuntime()) {
     return {
       id: getDemoUserId(demoSessionId),
       name: "Demo User",
@@ -92,7 +93,7 @@ export async function requireViewer() {
 
 export async function getViewerFromRequest(request: Request) {
   const demoSessionId = getCookieFromRequest(request, demoSessionCookieName);
-  if (demoSessionId) {
+  if (demoSessionId && !isOfflineRuntime()) {
     return {
       id: getDemoUserId(demoSessionId),
       name: "Demo User",

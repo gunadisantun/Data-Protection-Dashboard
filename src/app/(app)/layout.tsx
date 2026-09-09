@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { AppShell } from "@/components/app-shell";
 import { requireViewer, toAccessScope } from "@/lib/access";
 import { getCurrentUser } from "@/lib/data";
+import { isOfflineRuntime } from "@/lib/offline-runtime";
 
 export default async function ProductLayout({ children }: { children: ReactNode }) {
   const viewer = await requireViewer();
@@ -17,6 +18,7 @@ export default async function ProductLayout({ children }: { children: ReactNode 
           ? user?.department?.name ?? "Unit ABC"
           : user?.department?.name ?? null,
         isDemo: viewer.isDemo,
+        isOfflineDesktop: isOfflineRuntime(),
       }}
     >
       {children}

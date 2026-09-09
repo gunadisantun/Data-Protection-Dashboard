@@ -1,6 +1,6 @@
 import { count, eq } from "drizzle-orm";
 import { hashPassword } from "better-auth/crypto";
-import { db } from "@/db/client";
+import { db, isOfflineDatabase } from "@/db/client";
 import { ensureOfflineMigrations } from "@/db/offline-migrations";
 import {
   account,
@@ -60,7 +60,7 @@ async function initializeDatabase() {
   let seededFaqKnowledge = false;
 
   if ((existing?.value ?? 0) === 0) {
-    await seedDatabase();
+    await seedDatabase({ includeUsers: !isOfflineDatabase });
     seededFaqKnowledge = true;
   } else {
     seededFaqKnowledge = await seedFaqKnowledgeIfEmpty();
@@ -101,12 +101,12 @@ export async function resetAndSeedDatabase() {
   await db.delete(session);
   await db.delete(user);
   await db.delete(departments);
-  await seedDatabase();
+  await seedDatabase({ includeUsers: true });
   initialized = true;
   initializationPromise = Promise.resolve();
 }
 
-async function seedDatabase() {
+async function seedDatabase({ includeUsers }: { includeUsers: boolean }) {
   const now = new Date().toISOString();
 
   await db.insert(departments).values([
@@ -117,54 +117,56 @@ async function seedDatabase() {
     { id: "dept-legal", name: "Legal Team", createdAt: now },
   ]);
 
-  await db.insert(users).values(
-    seedUsers.map((seedUser) => ({
-      id: seedUser.id,
-      username: seedUser.username,
-      fullName: seedUser.fullName,
-      email: seedUser.email,
-      role: seedUser.role,
-      departmentId: seedUser.departmentId,
-      picName: seedUser.fullName,
-      picEmail: seedUser.email,
-      createdAt: now,
-    })),
-  );
+  if (includeUsers) {
+    await db.insert(users).values(
+      seedUsers.map((seedUser) => ({
+        id: seedUser.id,
+        username: seedUser.username,
+        fullName: seedUser.fullName,
+        email: seedUser.email,
+        role: seedUser.role,
+        departmentId: seedUser.departmentId,
+        picName: seedUser.fullName,
+        picEmail: seedUser.email,
+        createdAt: now,
+      })),
+    );
 
-  const authNow = new Date();
-  const passwordHash = await hashPassword(seedUserPassword);
+    const authNow = new Date();
+    const passwordHash = await hashPassword(seedUserPassword);
 
-  await db.insert(user).values(
-    seedUsers.map((seedUser) => ({
-      id: seedUser.id,
-      name: seedUser.fullName,
-      email: seedUser.email,
-      emailVerified: true,
-      image: null,
-      role: seedUser.role,
-      departmentId: seedUser.departmentId,
-      createdAt: authNow,
-      updatedAt: authNow,
-    })),
-  );
+    await db.insert(user).values(
+      seedUsers.map((seedUser) => ({
+        id: seedUser.id,
+        name: seedUser.fullName,
+        email: seedUser.email,
+        emailVerified: true,
+        image: null,
+        role: seedUser.role,
+        departmentId: seedUser.departmentId,
+        createdAt: authNow,
+        updatedAt: authNow,
+      })),
+    );
 
-  await db.insert(account).values(
-    seedUsers.map((seedUser) => ({
-      id: `account-${seedUser.id}`,
-      accountId: seedUser.id,
-      providerId: "credential",
-      userId: seedUser.id,
-      accessToken: null,
-      refreshToken: null,
-      idToken: null,
-      accessTokenExpiresAt: null,
-      refreshTokenExpiresAt: null,
-      scope: null,
-      password: passwordHash,
-      createdAt: authNow,
-      updatedAt: authNow,
-    })),
-  );
+    await db.insert(account).values(
+      seedUsers.map((seedUser) => ({
+        id: `account-${seedUser.id}`,
+        accountId: seedUser.id,
+        providerId: "credential",
+        userId: seedUser.id,
+        accessToken: null,
+        refreshToken: null,
+        idToken: null,
+        accessTokenExpiresAt: null,
+        refreshTokenExpiresAt: null,
+        scope: null,
+        password: passwordHash,
+        createdAt: authNow,
+        updatedAt: authNow,
+      })),
+    );
+  }
 
   await db.insert(governanceSettings).values({
     id: "singleton",
@@ -173,13 +175,13 @@ async function seedDatabase() {
     dpoContact: "dpo@company.com",
     createdAt: now,
     updatedAt: now,
-    updatedBy: "user-dpo",
+    updatedBy: includeUsers ? "user-dpo" : undefined,
   });
 
-  await seedFaqKnowledgeIfEmpty();
+  await seedFaqKnowledgeIfEmpty(includeUsers ? "user-dpo" : undefined);
 }
 
-async function seedFaqKnowledgeIfEmpty() {
+async function seedFaqKnowledgeIfEmpty(seedActorId?: string) {
   const [existing] = await db.select({ value: count() }).from(faqEntries);
   if ((existing?.value ?? 0) > 0) {
     return false;
@@ -214,8 +216,8 @@ async function seedFaqKnowledgeIfEmpty() {
         displayOrder: entry.displayOrder,
         createdAt: now,
         updatedAt: now,
-        createdBy: "user-dpo",
-        updatedBy: "user-dpo",
+        createdBy: seedActorId,
+        updatedBy: seedActorId,
       })),
     );
   }
@@ -236,6 +238,88 @@ async function seedFaqKnowledgeIfEmpty() {
   }
 
   return true;
+}
+
+export async function isDesktopSetupRequired() {
+  if (!isOfflineDatabase) {
+    return false;
+  }
+
+  await ensureDatabase();
+  const [existing] = await db.select({ value: count() }).from(users);
+  return (existing?.value ?? 0) === 0;
+}
+
+export async function createDesktopMasterAdmin(payload: {
+  username: string;
+  fullName: string;
+  email: string;
+  password: string;
+}) {
+  if (!isOfflineDatabase) {
+    return null;
+  }
+
+  await ensureDatabase();
+  const [existing] = await db.select({ value: count() }).from(users);
+  if ((existing?.value ?? 0) > 0) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  const authNow = new Date();
+  const id = "user-local-masteradmin";
+  const email = payload.email.trim().toLowerCase();
+  const passwordHash = await hashPassword(payload.password.trim());
+
+  await db.transaction(async (tx) => {
+    await tx.insert(users).values({
+      id,
+      username: payload.username.trim(),
+      fullName: payload.fullName.trim(),
+      email,
+      role: "MasterAdmin",
+      departmentId: "dept-legal",
+      picName: payload.fullName.trim(),
+      picEmail: email,
+      createdAt: now,
+    });
+
+    await tx.insert(user).values({
+      id,
+      name: payload.fullName.trim(),
+      email,
+      emailVerified: true,
+      image: null,
+      role: "MasterAdmin",
+      departmentId: "dept-legal",
+      createdAt: authNow,
+      updatedAt: authNow,
+    });
+
+    await tx.insert(account).values({
+      id: `account-${id}`,
+      accountId: id,
+      providerId: "credential",
+      userId: id,
+      accessToken: null,
+      refreshToken: null,
+      idToken: null,
+      accessTokenExpiresAt: null,
+      refreshTokenExpiresAt: null,
+      scope: null,
+      password: passwordHash,
+      createdAt: authNow,
+      updatedAt: authNow,
+    });
+
+    await tx
+      .update(governanceSettings)
+      .set({ updatedBy: id, updatedAt: now })
+      .where(eq(governanceSettings.id, "singleton"));
+  });
+
+  return { username: payload.username.trim(), email };
 }
 
 async function syncFaqReferenceMetadata() {

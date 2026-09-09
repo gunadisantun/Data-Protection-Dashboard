@@ -1,10 +1,18 @@
 import { NextResponse } from "next/server";
 import { cleanupDemoSession, createDemoSession } from "@/lib/data";
 import { demoSessionCookieName } from "@/lib/access";
+import { isOfflineRuntime } from "@/lib/offline-runtime";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  if (isOfflineRuntime()) {
+    return NextResponse.json(
+      { error: "Demo mode is not available in the desktop app." },
+      { status: 403 },
+    );
+  }
+
   const existingDemoSessionId = request.headers
     .get("cookie")
     ?.split(";")

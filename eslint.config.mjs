@@ -11,6 +11,7 @@ const eslintConfig = defineConfig([
     ".next/**",
     "dist/**",
     "dist-electron/**",
+    "dist-electron-test/**",
     "dist-windows/**",
     "outputs/**",
     "out/**",
