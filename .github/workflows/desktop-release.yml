@@ -107,6 +107,8 @@ jobs:
       - build-macos
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           path: release-assets
@@ -115,6 +117,7 @@ jobs:
       - name: Publish desktop release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           DESKTOP_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
           PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || 'false' }}
         run: |
@@ -133,10 +136,11 @@ jobs:
 
           Desktop mode runs locally with offline device storage."
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" release-assets/* --clobber
+          if gh release view "$TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" release-assets/* --repo "$GH_REPO" --clobber
           else
             gh release create "$TAG" release-assets/* \
+              --repo "$GH_REPO" \
               --title "Privacy Bro Desktop ${VERSION}" \
               --notes "$notes" \
               --latest \
