@@ -8,13 +8,13 @@
     "build": "node ./node_modules/next/dist/bin/next build",
     "start": "node ./node_modules/next/dist/bin/next start",
     "desktop:dev": "concurrently \"cross-env PRIVACY_BRO_OFFLINE=1 PRIVACY_BRO_DATA_DIR=.privacy-bro-offline node ./node_modules/next/dist/bin/next dev --hostname 127.0.0.1 --port 3000\" \"wait-on http://127.0.0.1:3000/login && cross-env ELECTRON_START_URL=http://127.0.0.1:3000 electron .\"",
-    "desktop:prepare": "npm run build && node scripts/prepare-electron.mjs",
+    "desktop:prepare": "cross-env PRIVACY_BRO_OFFLINE=1 PRIVACY_BRO_DATA_DIR=.privacy-bro-offline-build npm run build && node scripts/prepare-electron.mjs",
     "desktop:portable": "npm run desktop:prepare && node scripts/build-windows-portable.mjs",
     "desktop:pack": "npm run desktop:prepare && electron-builder --win --dir",
     "desktop:dist": "npm run desktop:prepare && electron-builder --win nsis",
     "desktop:dist:win": "npm run desktop:prepare && electron-builder --win nsis --publish never",
-    "desktop:dist:mac": "npm run desktop:prepare && electron-builder --mac dmg --universal --publish never",
-    "desktop:dist:all": "npm run desktop:prepare && electron-builder --win nsis --mac dmg --universal --publish never",
+    "desktop:dist:mac": "npm run desktop:prepare && electron-builder --mac dmg --publish never",
+    "desktop:dist:all": "npm run desktop:prepare && electron-builder --win nsis --mac dmg --publish never",
     "lint": "node ./node_modules/eslint/bin/eslint.js",
     "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit",
     "test": "node ./node_modules/vitest/vitest.mjs run",
@@ -80,6 +80,9 @@
     "directories": {
       "output": "dist-electron"
     },
+    "asar": false,
+    "npmRebuild": false,
+    "nodeGypRebuild": false,
     "files": [
       "electron/**/*",
       ".next/standalone/**/*",
@@ -87,7 +90,8 @@
       "public/**/*",
       "drizzle/**/*",
       "templates/**/*",
-      "package.json"
+      "package.json",
+      "!node_modules/**/*"
     ],
     "asarUnpack": [
       ".next/standalone/**/*",
@@ -106,7 +110,9 @@
       "target": [
         "nsis"
       ],
-      "artifactName": "Privacy-Bro-Setup-${version}.${ext}"
+      "artifactName": "Privacy-Bro-Setup-${version}.${ext}",
+      "signAndEditExecutable": false,
+      "signExecutable": false
     },
     "nsis": {
       "oneClick": false,

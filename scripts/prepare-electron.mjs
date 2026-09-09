@@ -1,4 +1,4 @@
-import { cp, mkdir, rm } from "node:fs/promises";
+import { cp, lstat, mkdir, readdir, realpath, rm } from "node:fs/promises";
 import path from "node:path";
 
 const root = process.cwd();
@@ -17,9 +17,39 @@ async function copyIfExists(from, to) {
   }
 }
 
+async function replaceSymlinksWithCopies(target) {
+  let stats;
+  try {
+    stats = await lstat(target);
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  if (stats.isSymbolicLink()) {
+    const source = await realpath(target);
+    await rm(target, { recursive: true, force: true });
+    await cp(source, target, { recursive: true, dereference: true });
+    await replaceSymlinksWithCopies(target);
+    return;
+  }
+
+  if (!stats.isDirectory()) {
+    return;
+  }
+
+  const entries = await readdir(target);
+  await Promise.all(
+    entries.map((entry) => replaceSymlinksWithCopies(path.join(target, entry))),
+  );
+}
+
 await copyIfExists(path.join(root, "public"), path.join(standalone, "public"));
 await copyIfExists(path.join(root, ".next", "static"), path.join(standalone, ".next", "static"));
 await copyIfExists(path.join(root, "drizzle"), path.join(standalone, "drizzle"));
 await copyIfExists(path.join(root, "templates"), path.join(standalone, "templates"));
+await replaceSymlinksWithCopies(standalone);
 
 console.log("Electron standalone assets prepared.");
