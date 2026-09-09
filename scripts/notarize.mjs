@@ -17,9 +17,10 @@ export default async function notarizeMacos(context) {
   const teamId = process.env.APPLE_TEAM_ID;
 
   if (!appleId || !appleIdPassword || !teamId) {
-    throw new Error(
-      "macOS notarization requires APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, and APPLE_TEAM_ID.",
+    console.warn(
+      "Skipping macOS notarization because APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, or APPLE_TEAM_ID is missing.",
     );
+    return;
   }
 
   await notarize({
