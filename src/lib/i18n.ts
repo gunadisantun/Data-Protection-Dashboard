@@ -87,6 +87,19 @@ export const dictionaries = {
       loginFailed: "Login failed. Check your username/password.",
       demoFailed: "Demo version cannot be opened yet. Please try again.",
     },
+    desktopDownload: {
+      button: "Download Desktop App",
+      title: "Offline Desktop App",
+      description:
+        "Install Privacy Bro locally and work offline with device-local data.",
+      loading: "Checking latest installer...",
+      loadFailed: "Desktop installer information is not available yet.",
+      windows: "Download for Windows",
+      mac: "Download for macOS",
+      preparing: "Preparing",
+      releaseNotes: "View release notes",
+      version: "Version",
+    },
     dashboard: {
       title: "Main Dashboard",
       subtitle:
@@ -243,6 +256,19 @@ export const dictionaries = {
       openingDemo: "Membuka demo...",
       loginFailed: "Login gagal. Cek username/password.",
       demoFailed: "Demo version belum bisa dibuka. Silakan coba lagi.",
+    },
+    desktopDownload: {
+      button: "Download Desktop App",
+      title: "Aplikasi Desktop Offline",
+      description:
+        "Install Privacy Bro secara lokal dan gunakan offline dengan data tersimpan di perangkat.",
+      loading: "Mengecek installer terbaru...",
+      loadFailed: "Informasi installer desktop belum tersedia.",
+      windows: "Download untuk Windows",
+      mac: "Download untuk macOS",
+      preparing: "Sedang disiapkan",
+      releaseNotes: "Lihat catatan rilis",
+      version: "Versi",
     },
     dashboard: {
       title: "Main Dashboard",

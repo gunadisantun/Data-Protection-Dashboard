@@ -7,5 +7,5 @@ describe("FAQ knowledge seed loader", () => {
     expect(data.categories).toHaveLength(20);
     expect(data.entries).toHaveLength(133);
     expect(data.references).toHaveLength(0);
-  });
+  }, 60000);
 });

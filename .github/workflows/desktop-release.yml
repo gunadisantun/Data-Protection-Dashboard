@@ -1,0 +1,142 @@
+name: Desktop Installers
+
+on:
+  push:
+    tags:
+      - "desktop-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Desktop app version, for example 0.1.1"
+        required: true
+        default: "0.1.0"
+      prerelease:
+        description: "Mark GitHub release as prerelease"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build signed Windows installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - name: Set package version
+        shell: bash
+        env:
+          DESKTOP_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+        run: |
+          version="${DESKTOP_VERSION#desktop-v}"
+          npm version "$version" --no-git-tag-version --allow-same-version
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run desktop:dist:win
+        env:
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: privacy-bro-windows
+          path: |
+            dist-electron/*.exe
+            dist-electron/*.blockmap
+            dist-electron/latest*.yml
+          if-no-files-found: error
+
+  build-macos:
+    name: Build signed macOS DMG
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - name: Set package version
+        shell: bash
+        env:
+          DESKTOP_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+        run: |
+          version="${DESKTOP_VERSION#desktop-v}"
+          npm version "$version" --no-git-tag-version --allow-same-version
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run desktop:dist:mac
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: privacy-bro-macos
+          path: |
+            dist-electron/*.dmg
+            dist-electron/*.blockmap
+            dist-electron/latest*.yml
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub release
+    needs:
+      - build-windows
+      - build-macos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish desktop release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DESKTOP_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+          PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || 'false' }}
+        run: |
+          set -euo pipefail
+          VERSION="${DESKTOP_VERSION#desktop-v}"
+          TAG="desktop-v${VERSION}"
+          prerelease_flag=""
+          if [ "${PRERELEASE:-false}" = "true" ]; then
+            prerelease_flag="--prerelease"
+          fi
+
+          notes="Signed desktop installers for Privacy Bro ${VERSION}.
+
+          Windows: download the .exe installer.
+          macOS: download the .dmg installer.
+
+          Desktop mode runs locally with offline device storage."
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release-assets/* --clobber
+          else
+            gh release create "$TAG" release-assets/* \
+              --title "Privacy Bro Desktop ${VERSION}" \
+              --notes "$notes" \
+              --latest \
+              $prerelease_flag
+          fi
