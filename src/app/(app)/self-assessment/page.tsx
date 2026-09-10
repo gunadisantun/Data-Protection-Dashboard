@@ -40,9 +40,8 @@ export default async function SelfAssessmentPage({
           Self Assessment Kepatuhan PDP
         </h1>
         <p className="mt-1 text-sm leading-6 text-slate-600">
-          Assessment internal berbasis trigger. Level 1 hanya screening relevansi
-          unit, lalu Level 2 yang terpicu dipakai untuk scoring, gap analysis,
-          evidence review, dan action plan. Satu unit memiliki satu assessment
+          Asesmen satu lapis berdasarkan kontrol audit Pengendali Data Pribadi,
+          dengan evaluasi bukti dan action plan. Satu unit memiliki satu assessment
           aktif yang bisa diperbarui berkala.
         </p>
       </div>

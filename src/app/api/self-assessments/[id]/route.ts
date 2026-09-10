@@ -45,6 +45,9 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
     return NextResponse.json({ data: assessment });
   } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Self assessment validation:")) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     if (error instanceof Error && error.message.includes("Only DPO")) {
       return NextResponse.json({ error: "Only DPO or Master Admin can finalize" }, { status: 403 });
     }

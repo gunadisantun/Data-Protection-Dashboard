@@ -6,7 +6,6 @@ import {
   ArrowLeft,
   Download,
   ExternalLink,
-  FileCheck2,
   Save,
   Send,
   ShieldCheck,
@@ -22,12 +21,14 @@ import {
   allowedKindsForRole,
   answerOptionsForQuestion,
   calculateSelfAssessmentSummary,
-  countTriggeredL2Questions,
   generateSelfAssessmentActionPlan,
   getEvidenceStrength,
   getSelfAssessmentValidationIssues,
   isSelfAssessmentQuestionApplicable,
   isScoredSelfAssessmentQuestion,
+  hasCurrentSelfAssessmentAnswers,
+  hasLegacySelfAssessmentAnswers,
+  legacySelfAssessmentQuestions,
   kindLabel,
   selfAssessmentActionStatusValues,
   selfAssessmentPriorityValues,
@@ -35,7 +36,6 @@ import {
   type SelfAssessmentActionPlanItem,
   type SelfAssessmentAnswers,
   type SelfAssessmentEvidenceFile,
-  type SelfAssessmentKind,
   type SelfAssessmentStatus,
 } from "@/lib/self-assessment";
 import { cn } from "@/lib/utils";
@@ -71,14 +71,15 @@ export function SelfAssessmentWorkspace({
   const router = useRouter();
   const allowedKinds = useMemo(() => allowedKindsForRole(viewerRole), [viewerRole]);
   const [activeSection, setActiveSection] = useState<SectionKey>("questions");
-  const [activeKind, setActiveKind] = useState<SelfAssessmentKind>(allowedKinds[0]);
   const [title, setTitle] = useState(assessment.title);
   const [departmentId, setDepartmentId] = useState(assessment.departmentId ?? "");
   const [answers, setAnswers] = useState<SelfAssessmentAnswers>(assessment.answers);
   const [actionPlan, setActionPlan] = useState<SelfAssessmentActionPlanItem[]>(
-    assessment.actionPlan,
+    assessment.actionPlan.filter((item) => selfAssessmentQuestions.some((question) => question.id === item.questionId)),
   );
-  const [status, setStatus] = useState<SelfAssessmentStatus>(assessment.status);
+  const [status, setStatus] = useState<SelfAssessmentStatus>(
+    hasLegacySelfAssessmentAnswers(assessment.answers) && !hasCurrentSelfAssessmentAnswers(assessment.answers) ? "Draft" : assessment.status,
+  );
   const [message, setMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [uploadingQuestionId, setUploadingQuestionId] = useState("");
@@ -86,10 +87,9 @@ export function SelfAssessmentWorkspace({
     () => calculateSelfAssessmentSummary(answers, allowedKinds),
     [answers, allowedKinds],
   );
-  const triggeredL2Count = countTriggeredL2Questions(answers);
   const visibleQuestions = selfAssessmentQuestions.filter(
     (question) =>
-      question.kind === activeKind &&
+      allowedKinds.includes(question.kind) &&
       isSelfAssessmentQuestionApplicable(question, answers),
   );
   const questionsByArea = groupByArea(visibleQuestions);
@@ -246,7 +246,7 @@ export function SelfAssessmentWorkspace({
 
     if (payload.data) {
       setStatus(payload.data.status);
-      setActionPlan(payload.data.actionPlan);
+      setActionPlan(payload.data.actionPlan.filter((item) => selfAssessmentQuestions.some((question) => question.id === item.questionId)));
     }
 
     setMessage(
@@ -281,9 +281,7 @@ export function SelfAssessmentWorkspace({
           </h1>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
             Assessment ini dibuat sekali untuk setiap unit dan diperbarui berkala.
-            Level 1 hanya untuk menentukan relevansi unit. Skor, gap analysis,
-            evidence review, dan rekomendasi remediasi dihitung dari Level 2 yang
-            terpicu.
+            Asesmen kepatuhan Pengendali Data Pribadi berdasarkan kontrol audit per pasal UU PDP.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -366,15 +364,29 @@ export function SelfAssessmentWorkspace({
       </Card>
 
       <div className="grid gap-4 md:grid-cols-5">
-        <MetricCard label="L2 Terjawab" value={`${summary.answered}/${summary.totalQuestions}`} />
-        <MetricCard label="L2 Dinilai" value={summary.applicable} />
+        <MetricCard label="Kontrol Terjawab" value={`${summary.answered}/${summary.totalQuestions}`} />
+        <MetricCard label="Kontrol Dinilai" value={summary.applicable} />
         <MetricCard
-          label="Nilai L2"
+          label="Pemenuhan Kontrol"
           value={summary.percentage === null ? "N/A" : `${Math.round(summary.percentage * 100)}%`}
         />
-        <MetricCard label="Gap L2" value={summary.gaps} tone={summary.gaps ? "red" : "green"} />
-        <MetricCard label="L2 Terpicu" value={triggeredL2Count} />
+        <MetricCard label="Belum Ada" value={summary.gaps} tone={summary.gaps ? "red" : "green"} />
+        <MetricCard label="Dalam Proses" value={summary.partial} />
       </div>
+
+      {hasLegacySelfAssessmentAnswers(answers) ? (
+        <details className="rounded-lg border border-slate-200 bg-white p-5">
+          <summary className="cursor-pointer font-semibold">Arsip jawaban kertas kerja sebelumnya</summary>
+          <p className="my-3 text-sm text-slate-600">Jawaban dan bukti sebelumnya tetap tersimpan. Kontrol pada kertas kerja baru dinilai kembali secara terpisah.</p>
+          {legacySelfAssessmentQuestions.filter((question) => answers[question.id]?.answer || answers[question.id]?.note || answers[question.id]?.evidenceFiles?.length).map((question) => (
+            <details key={question.id} className="border-t border-slate-100 py-3">
+              <summary className="cursor-pointer text-sm">{question.question} - {answers[question.id]?.answer || "Belum dijawab"}</summary>
+              <p className="mt-2 whitespace-pre-wrap text-sm">{answers[question.id]?.note}</p>
+              {answers[question.id]?.evidenceFiles?.map((file) => <Button key={file.id} variant="secondary" onClick={() => void openEvidence(file.id)}><ExternalLink className="h-4 w-4" />{file.fileName}</Button>)}
+            </details>
+          ))}
+        </details>
+      ) : null}
 
       <Card>
         <CardContent className="space-y-5">
@@ -398,16 +410,12 @@ export function SelfAssessmentWorkspace({
 
           {activeSection === "questions" ? (
             <Questionnaire
-              allowedKinds={allowedKinds}
-              activeKind={activeKind}
-              setActiveKind={setActiveKind}
               questionsByArea={questionsByArea}
               answers={answers}
               updateAnswer={updateAnswer}
               uploadEvidence={uploadEvidence}
               openEvidence={openEvidence}
               uploadingQuestionId={uploadingQuestionId}
-              triggeredL2Count={triggeredL2Count}
             />
           ) : (
             <ActionPlanEditor
@@ -491,20 +499,13 @@ function mergeGeneratedActionPlan(
 }
 
 function Questionnaire({
-  allowedKinds,
-  activeKind,
-  setActiveKind,
   questionsByArea,
   answers,
   updateAnswer,
   uploadEvidence,
   openEvidence,
   uploadingQuestionId,
-  triggeredL2Count,
 }: {
-  allowedKinds: SelfAssessmentKind[];
-  activeKind: SelfAssessmentKind;
-  setActiveKind: (kind: SelfAssessmentKind) => void;
   questionsByArea: Array<{ area: string; questions: typeof selfAssessmentQuestions }>;
   answers: SelfAssessmentAnswers;
   updateAnswer: (
@@ -515,69 +516,39 @@ function Questionnaire({
   uploadEvidence: (questionId: string, file: File) => Promise<void>;
   openEvidence: (evidenceId: string) => Promise<void>;
   uploadingQuestionId: string;
-  triggeredL2Count: number;
 }) {
+  const [activeArea, setActiveArea] = useState(questionsByArea[0]?.area ?? "");
+  const [controlPage, setControlPage] = useState(0);
+  const selectedGroup = questionsByArea.find((group) => group.area === activeArea);
+  const pageCount = Math.ceil((selectedGroup?.questions.length ?? 0) / 6);
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 md:grid-cols-3">
-        {allowedKinds.map((kind) => {
-          const questionCount =
-            kind === "ADDITIONAL"
-              ? triggeredL2Count
-              : selfAssessmentQuestions.filter((item) => item.kind === kind).length;
-          return (
-            <button
-              key={kind}
-              type="button"
-              onClick={() => setActiveKind(kind)}
-              className={cn(
-                "rounded-lg border p-4 text-left transition",
-                activeKind === kind
-                  ? "border-blue-200 bg-blue-50 shadow-sm"
-                  : "border-[color:var(--pv-border)] bg-white hover:border-blue-200",
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <span
-                  className={cn(
-                    "flex h-9 w-9 items-center justify-center rounded-lg",
-                    activeKind === kind
-                      ? "bg-blue-600 text-white"
-                      : "bg-slate-100 text-slate-600",
-                  )}
-                >
-                  <FileCheck2 className="h-4 w-4" />
-                </span>
-                <div>
-                  <p className="font-bold text-slate-950">{kindLabel(kind)}</p>
-                  <p className="text-xs font-semibold text-slate-500">
-                    {questionCount} pertanyaan
-                  </p>
-                </div>
-              </div>
-            </button>
-          );
-        })}
+      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Bagian asesmen">
+        {questionsByArea.map((group) => (
+          <button key={group.area} type="button" role="tab" aria-selected={activeArea === group.area}
+            onClick={() => { setActiveArea(group.area); setControlPage(0); }}
+            className={cn("max-w-full rounded-lg border px-4 py-3 text-left text-sm font-semibold", activeArea === group.area ? "border-blue-600 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-600")}>
+            {group.area}
+            <span className="ml-2 text-xs">{group.questions.filter((q) => answers[q.id]?.answer).length}/{group.questions.length}</span>
+          </button>
+        ))}
       </div>
 
-      {questionsByArea.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
-          <p className="font-bold text-slate-950">Belum ada modul L2 yang wajib diisi.</p>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            Isi L1 Unit Core terlebih dahulu. Modul L2 akan muncul jika jawaban L1
-            memicu consent, data spesifik, vendor, transfer, CCTV, HR, marketing,
-            proyek baru, atau skenario lain yang relevan.
-          </p>
+      {pageCount > 1 ? (
+        <div className="flex items-center justify-between gap-3">
+          <Button variant="secondary" disabled={controlPage === 0} onClick={() => setControlPage((page) => page - 1)}>Sebelumnya</Button>
+          <span className="text-sm text-slate-600">Halaman {controlPage + 1} / {pageCount}</span>
+          <Button variant="secondary" disabled={controlPage >= pageCount - 1} onClick={() => setControlPage((page) => page + 1)}>Berikutnya</Button>
         </div>
       ) : null}
 
-      {questionsByArea.map((group) => (
+      {questionsByArea.filter((group) => group.area === activeArea).map((group) => (
         <section key={group.area} className="space-y-3">
           <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3">
             <h2 className="font-bold text-slate-950">{group.area}</h2>
             <Badge tone="blue">{group.questions.length} pertanyaan</Badge>
           </div>
-          {group.questions.map((question) => {
+          {group.questions.slice(controlPage * 6, (controlPage + 1) * 6).map((question) => {
             const answer = answers[question.id] ?? {
               answer: "",
               note: "",
@@ -591,22 +562,23 @@ function Questionnaire({
                 className="rounded-lg border border-[color:var(--pv-border)] bg-white p-5"
               >
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="space-y-2">
+                  <div className="min-w-0 flex-1 space-y-2">
                     <p className="text-xs font-bold uppercase tracking-[0.12em] text-blue-600">
-                      {question.id} - {question.triggerOrOwner || "Core"}
+                      Kontrol {question.number} - {question.reference}
                     </p>
                     <h3 className="text-base font-bold leading-6 text-slate-950">
                       {question.question}
                     </h3>
                     <p className="text-sm leading-6 text-slate-600">
-                      <span className="font-semibold text-slate-800">Applicable:</span>{" "}
-                      {question.applicability || "-"}
+                      <span className="font-semibold text-slate-800">Tujuan:</span>{" "}
+                      {question.objective || "-"}
                     </p>
+                    <details className="text-sm leading-6 text-slate-600">
+                      <summary className="cursor-pointer font-semibold">Isi pasal</summary>
+                      <p className="mt-2 whitespace-pre-wrap">{question.articleText}</p>
+                    </details>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {question.kind === "ADDITIONAL" ? (
-                      <Badge tone="blue">Terpicu dari L1</Badge>
-                    ) : null}
+                  <div className="flex shrink-0 flex-wrap gap-2">
                     <Badge tone="slate">{question.reference || "Referensi umum"}</Badge>
                   </div>
                 </div>
@@ -620,8 +592,8 @@ function Questionnaire({
                   )}
                 >
                   <div className="space-y-2">
-                    <Label help={isScoredSelfAssessmentQuestion(question) ? "Pilih kondisi implementasi kontrol atau kewajiban pada unit/proses ini. Catatan dan bukti pendukung bersifat opsional." : "Level 1 hanya menentukan relevansi unit. Jawaban Ya, Sebagian, atau Tidak Tahu akan memicu module Level 2 terkait."}>
-                      Jawaban
+                    <Label help="Sudah Ada: kontrol dilaksanakan. Dalam Proses: sedang disiapkan atau belum lengkap. Belum Ada: belum dilaksanakan. Tidak Relevan: tidak berlaku pada proses yang dinilai.">
+                      Status Kontrol
                     </Label>
                     <Select
                       value={answer.answer}
@@ -655,7 +627,7 @@ function Questionnaire({
                   <div className="mt-4">
                     <div className="space-y-2">
                       <Label help={buildNoteHelp(question, answer.answer)}>
-                        Catatan Lanjutan (Opsional)
+                        Keterangan / Bukti Pelaksanaan (Opsional)
                       </Label>
                       <Textarea
                         value={answer.note}
@@ -663,6 +635,10 @@ function Questionnaire({
                         className="min-h-28"
                         placeholder="Jelaskan gap, penyebab, proses terdampak, dan rencana tindak lanjut bila diketahui..."
                       />
+                    </div>
+                    <div className="mt-4 space-y-2">
+                      <Label help="Nama penanggung jawab atau narahubung untuk kontrol ini.">Penanggung Jawab / CP (Opsional)</Label>
+                      <Input value={answer.pic} onChange={(event) => updateAnswer(question.id, "pic", event.target.value)} placeholder="Nama penanggung jawab" />
                     </div>
                   </div>
                 ) : null}

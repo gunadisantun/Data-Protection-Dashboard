@@ -70,6 +70,10 @@ import {
   emptySelfAssessmentAnswers,
   emptySelfAssessmentDataMap,
   generateSelfAssessmentActionPlan,
+  getSelfAssessmentValidationIssues,
+  hasCurrentSelfAssessmentAnswers,
+  hasLegacySelfAssessmentAnswers,
+  legacySelfAssessmentQuestions,
   type SelfAssessmentActionPlanItem,
   type SelfAssessmentAnswers,
   type SelfAssessmentDataMapRow,
@@ -3144,12 +3148,21 @@ export async function updateSelfAssessment(
     throw new Error("Forbidden department scope");
   }
 
-  const answers = payload.answers ?? (existing.answers as SelfAssessmentAnswers);
+  const previousAnswers = existing.answers as SelfAssessmentAnswers;
+  const answers = { ...previousAnswers, ...payload.answers };
   const actionPlan =
     payload.actionPlan ??
     generateSelfAssessmentActionPlan(answers, allowedKindsForRole(scope?.role ?? "User"));
+  const archivedActions = (existing.actionPlan as SelfAssessmentActionPlanItem[]).filter((item) =>
+    legacySelfAssessmentQuestions.some((question) => question.id === item.questionId) && !actionPlan.some((current) => current.id === item.id),
+  );
   const dataMap = payload.dataMap ?? (existing.dataMap as SelfAssessmentDataMapRow[]);
-  const nextStatus = payload.status ?? existing.status;
+  const switchingTemplate = hasLegacySelfAssessmentAnswers(previousAnswers) && !hasCurrentSelfAssessmentAnswers(previousAnswers);
+  const nextStatus = payload.status ?? (switchingTemplate ? "Draft" : existing.status);
+  if (nextStatus !== "Draft") {
+    const issues = getSelfAssessmentValidationIssues(answers, allowedKindsForRole(scope?.role ?? "User"));
+    if (issues.length) throw new Error(`Self assessment validation: ${issues.slice(0, 3).map((issue) => issue.message).join(" ")}`);
+  }
   const now = new Date().toISOString();
 
   await db
@@ -3158,13 +3171,13 @@ export async function updateSelfAssessment(
       ...(payload.title ? { title: payload.title } : {}),
       ...(departmentId ? { departmentId } : {}),
       answers,
-      actionPlan,
+      actionPlan: [...archivedActions, ...actionPlan],
       dataMap,
       status: nextStatus,
       finalizedBy:
-        nextStatus === "Finalized" ? (scope?.userId ?? existing.finalizedBy) : existing.finalizedBy,
+        nextStatus === "Finalized" ? (scope?.userId ?? existing.finalizedBy) : null,
       finalizedAt:
-        nextStatus === "Finalized" ? (existing.finalizedAt ?? now) : existing.finalizedAt,
+        nextStatus === "Finalized" ? now : null,
       updatedAt: now,
     })
     .where(eq(selfAssessments.id, id));
@@ -3349,6 +3362,7 @@ export async function getSelfAssessmentDashboard(scope?: AccessScope) {
   const allowedKinds = allowedKindsForRole(scope?.role ?? "User");
   return rows.map((row) => ({
     ...row,
+    status: hasLegacySelfAssessmentAnswers(row.answers as SelfAssessmentAnswers) && !hasCurrentSelfAssessmentAnswers(row.answers as SelfAssessmentAnswers) ? "Draft" as const : row.status,
     summary: calculateSelfAssessmentSummary(
       row.answers as SelfAssessmentAnswers,
       allowedKinds,

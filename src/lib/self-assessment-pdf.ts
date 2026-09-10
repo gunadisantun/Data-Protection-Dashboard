@@ -5,6 +5,10 @@ import {
   isSelfAssessmentQuestionApplicable,
   normalizeAnswer,
   selfAssessmentQuestions,
+  selfAssessmentSourceWorkbook,
+  selfAssessmentTemplateVersion,
+  hasCurrentSelfAssessmentAnswers,
+  hasLegacySelfAssessmentAnswers,
   type EvidenceStrength,
   type NormalizedSelfAssessmentAnswer,
   type SelfAssessmentActionPlanItem,
@@ -100,8 +104,8 @@ type ReportMetrics = {
   reviewedBy: string;
   reportStatus: string;
   l1Answered: number;
-  l2Triggered: number;
-  l2Applicable: number;
+  totalControls: number;
+  applicableControls: number;
   counts: StatusCount;
   readinessScore: number | null;
   selfDeclaredFulfillmentScore: number | null;
@@ -183,8 +187,6 @@ const abbreviationRows = [
   ["DPIA", "Data Protection Impact Assessment"],
   ["DPA", "Data Processing Agreement"],
   ["DPO", "Data Protection Officer"],
-  ["L1", "Level 1 Relevance Screening"],
-  ["L2", "Level 2 Triggered Assessment"],
   ["N/A", "Not Applicable"],
   ["SLA", "Service Level Agreement"],
 ];
@@ -237,6 +239,9 @@ async function loadReportFonts(pdf: PDFDocument) {
 }
 
 export async function generateSelfAssessmentPdf(input: PdfAssessment) {
+  if (hasLegacySelfAssessmentAnswers(input.answers) && !hasCurrentSelfAssessmentAnswers(input.answers)) {
+    input = { ...input, status: "Draft", finalizedAt: null, finalizer: null };
+  }
   const pdf = await PDFDocument.create();
   const { regular, bold } = await loadReportFonts(pdf);
   const page = pdf.addPage([pageWidth, pageHeight]);
@@ -279,14 +284,13 @@ export async function generateSelfAssessmentPdf(input: PdfAssessment) {
   return Buffer.from(bytes);
 }
 
-function buildReportMetrics(input: PdfAssessment): ReportMetrics {
+export function buildReportMetrics(input: PdfAssessment): ReportMetrics {
   const generatedAt = new Date();
-  const l1Questions = selfAssessmentQuestions.filter((question) => question.level === "L1" || question.kind === "UNIT");
-  const l2TriggeredQuestions = selfAssessmentQuestions.filter(
+  const controlQuestions = selfAssessmentQuestions.filter(
     (question) => isScoredSelfAssessmentQuestion(question) && isSelfAssessmentQuestionApplicable(question, input.answers),
   );
 
-  const reportQuestions = l2TriggeredQuestions.map((question): ReportQuestion => {
+  const reportQuestions = controlQuestions.map((question): ReportQuestion => {
     const state = input.answers[question.id];
     const answer = state?.answer || "";
     const note = state?.note?.trim() || "";
@@ -307,7 +311,7 @@ function buildReportMetrics(input: PdfAssessment): ReportMetrics {
     const isApplicableForScore = normalized !== "NOT_RELEVANT" || !isNaValid;
     const score = normalized === "COMPLIANT" ? 1 : normalized === "PARTIAL" ? 0.5 : 0;
     return {
-      question,
+      question: { ...question, owner: state?.pic?.trim() || question.owner },
       answer,
       note,
       normalized,
@@ -325,7 +329,7 @@ function buildReportMetrics(input: PdfAssessment): ReportMetrics {
   });
 
   const scoringQuestions = reportQuestions.filter((item) => item.isApplicableForScore);
-  const l2Applicable = scoringQuestions.length;
+  const applicableControls = scoringQuestions.length;
   const counts = countStatuses(reportQuestions);
   const readinessNumerator = scoringQuestions.reduce((sum, item) => sum + item.score, 0);
   const selfDeclaredNumerator = scoringQuestions
@@ -342,8 +346,8 @@ function buildReportMetrics(input: PdfAssessment): ReportMetrics {
   const evidenceGapItems = reportQuestions.filter((item) => item.isEvidenceGap);
   const evidenceRequestCount = reportQuestions.filter((item) => item.isEvidenceRequest).length;
   const clarificationItems = reportQuestions.filter((item) => item.isClarification);
-  const readinessScore = l2Applicable ? (readinessNumerator / l2Applicable) * 100 : null;
-  const selfDeclaredFulfillmentScore = l2Applicable ? (selfDeclaredNumerator / l2Applicable) * 100 : null;
+  const readinessScore = applicableControls ? (readinessNumerator / applicableControls) * 100 : null;
+  const selfDeclaredFulfillmentScore = applicableControls ? (selfDeclaredNumerator / applicableControls) * 100 : null;
   const evidenceVerifiedScore = evidenceRequiredItems.length
     ? (evidenceAdequateItems.length / evidenceRequiredItems.length) * 100
     : null;
@@ -352,10 +356,10 @@ function buildReportMetrics(input: PdfAssessment): ReportMetrics {
     : null;
   const areaRows = buildAreaRows(reportQuestions);
   const findings = reportQuestions
-    .filter((item) => item.normalized === "GAP" || item.normalized === "PARTIAL" || item.normalized === "UNKNOWN" || item.isEvidenceGap)
+    .filter((item) => item.normalized === "GAP" || item.normalized === "PARTIAL" || item.isClarification || item.isEvidenceGap)
     .sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority) || a.question.area.localeCompare(b.question.area));
   const consolidatedFindings = buildConsolidatedFindings(findings);
-  const allModules = [...new Set(selfAssessmentQuestions.filter((q) => q.kind === "ADDITIONAL").map((q) => q.module || q.triggerOrOwner).filter(Boolean))];
+  const allModules = [...new Set(selfAssessmentQuestions.map((q) => q.module || q.triggerOrOwner).filter(Boolean))];
   const triggeredModules = [...new Set(reportQuestions.map((item) => item.question.module || item.question.triggerOrOwner).filter(Boolean))].sort();
   const highCriticalGapCount = findings.filter(
     (item) => item.normalized === "GAP" && (item.priority === "High" || item.priority === "Critical"),
@@ -368,7 +372,7 @@ function buildReportMetrics(input: PdfAssessment): ReportMetrics {
     unknownCount,
     evidenceConfidence,
     evidenceGapCount: evidenceGapItems.length,
-    applicableCount: l2Applicable,
+    applicableCount: applicableControls,
     hasFundamentalCriticalGap: hasFundamentalCriticalGap(findings),
   });
 
@@ -379,16 +383,16 @@ function buildReportMetrics(input: PdfAssessment): ReportMetrics {
     preparedBy: input.creator ? `${input.creator.fullName} (${input.creator.email})` : "System Generated",
     reviewedBy: input.finalizer ? `${input.finalizer.fullName} (${input.finalizer.email})` : "Belum direview",
     reportStatus: input.finalizedAt ? "Final" : input.status || "Draft",
-    l1Answered: l1Questions.filter((question) => input.answers[question.id]?.answer).length,
-    l2Triggered: reportQuestions.length,
-    l2Applicable,
+    l1Answered: 0,
+    totalControls: reportQuestions.length,
+    applicableControls,
     counts,
     readinessScore,
     selfDeclaredFulfillmentScore,
     evidenceVerifiedScore,
-    gapRate: l2Applicable ? (gapCount / l2Applicable) * 100 : null,
-    partialRate: l2Applicable ? (partialCount / l2Applicable) * 100 : null,
-    uncertaintyRate: l2Applicable ? (unknownCount / l2Applicable) * 100 : null,
+    gapRate: applicableControls ? (gapCount / applicableControls) * 100 : null,
+    partialRate: applicableControls ? (partialCount / applicableControls) * 100 : null,
+    uncertaintyRate: applicableControls ? (unknownCount / applicableControls) * 100 : null,
     evidenceConfidence,
     evidenceRequiredCount: evidenceRequiredItems.length,
     evidenceUploadedCount: evidenceUploadedItems.length,
@@ -481,7 +485,7 @@ function buildAreaRows(items: ReportQuestion[]) {
     if (item.evidenceRequired && item.isApplicableForScore && ["Adequate", "Strong"].includes(item.evidenceStrength)) row.evidenceAdequate += 1;
     if (item.isEvidenceGap) row.evidenceGap += 1;
     if (item.isClarification) row.clarification += 1;
-    if (item.normalized === "GAP" || item.normalized === "PARTIAL" || item.normalized === "UNKNOWN" || item.isEvidenceGap) {
+    if (item.normalized === "GAP" || item.normalized === "PARTIAL" || item.isClarification || item.isEvidenceGap) {
       if (item.priority === "Critical") row.critical += 1;
       if (item.priority === "High") row.high += 1;
       if (item.priority === "Medium") row.medium += 1;
@@ -502,12 +506,13 @@ function buildAreaRows(items: ReportQuestion[]) {
 function drawCover(kit: PdfKit, input: PdfAssessment, metrics: ReportMetrics) {
   kit.section = "Cover";
   kit.page.drawRectangle({ x: 0, y: 0, width: pageWidth, height: pageHeight, color: white });
-  kit.page.drawRectangle({ x: 0, y: pageHeight - 142, width: pageWidth, height: 142, color: navy });
-  kit.page.drawRectangle({ x: 0, y: pageHeight - 148, width: pageWidth, height: 6, color: cyan });
+  kit.page.drawRectangle({ x: 0, y: pageHeight - 164, width: pageWidth, height: 164, color: navy });
+  kit.page.drawRectangle({ x: 0, y: pageHeight - 170, width: pageWidth, height: 6, color: cyan });
   text(kit, "Privacy Bro", margin, pageHeight - 54, 14, kit.bold, white);
   text(kit, "Untuk Penggunaan Internal", pageWidth - margin - 132, pageHeight - 54, 9, kit.bold, cyan);
-  text(kit, "Gap Analysis Report Kepatuhan UU PDP", margin, pageHeight - 98, 27, kit.bold, white, contentWidth);
-  text(kit, "Self-Assessment Berbasis Unit Kerja", margin, pageHeight - 123, 13, kit.regular, rgb(0.80, 0.90, 1));
+  text(kit, "Gap Analysis Report", margin, pageHeight - 91, 25, kit.bold, white);
+  text(kit, "Kepatuhan UU PDP", margin, pageHeight - 120, 25, kit.bold, white);
+  text(kit, "Asesmen Kontrol Pengendali Data Pribadi", margin, pageHeight - 146, 12, kit.regular, rgb(0.80, 0.90, 1));
 
   kit.y = pageHeight - 190;
   const metadata = [
@@ -544,12 +549,13 @@ function drawDisclaimer(kit: PdfKit) {
   [
     "Report ini disusun berdasarkan jawaban self-assessment, catatan, dan evidence yang diberikan oleh unit kerja pada saat assessment dilakukan. Hasil report ini bertujuan untuk memberikan gambaran awal mengenai tingkat pemenuhan kewajiban Pelindungan Data Pribadi berdasarkan UU PDP dan dokumen assessment yang digunakan.",
     "Report ini bukan legal opinion final dan tidak boleh digunakan sebagai satu-satunya dasar untuk menyimpulkan adanya pelanggaran hukum. Setiap temuan, risiko administratif, risiko gugatan, atau indikasi risiko pidana perlu divalidasi lebih lanjut oleh Legal, DPO, atau fungsi terkait.",
-    "Jawaban Tidak Tahu dan Tidak Relevan tanpa alasan yang memadai diperlakukan sebagai item yang memerlukan klarifikasi. Jawaban Ya/Ada yang belum didukung evidence yang memadai tetap dicatat sebagai jawaban unit, tetapi akan ditandai sebagai Evidence Gap untuk kebutuhan pembuktian kepatuhan.",
+    "Jawaban Belum dijawab dan Tidak Relevan tanpa alasan yang memadai diperlakukan sebagai item yang memerlukan klarifikasi. Jawaban Sudah Ada yang belum didukung evidence yang memadai tetap dicatat sebagai jawaban unit, tetapi akan ditandai sebagai Evidence Gap untuk kebutuhan pembuktian kepatuhan.",
     "Report ini perlu dibaca bersama dengan evidence, catatan unit, dan hasil validasi lanjutan oleh owner terkait.",
   ].forEach((item) => paragraph(kit, item, margin, contentWidth, 10.5, 16, 8));
 }
 
 function drawDocumentInformation(kit: PdfKit, input: PdfAssessment, metrics: ReportMetrics) {
+  newPage(kit, "Document Information");
   drawSectionTitle(kit, "Document Information");
   paragraph(
     kit,
@@ -566,15 +572,14 @@ function drawDocumentInformation(kit: PdfKit, input: PdfAssessment, metrics: Rep
     ["Unit Kerja", metrics.unitName],
     ["Assessment Period", `${formatDate(input.createdAt)} - ${formatDate(input.updatedAt)}`],
     ["Report Generated Date", metrics.reportDate],
-    ["Template Version", "Self Assessment UU PDP Unit Trigger Risk Evidence v5 Simplified"],
-    ["Excel Source Version", "Self_Assessment_UU_PDP_Unit_Trigger_Risk_Evidence_ClosedAnswer_Codex_v5_Simplified.xlsx"],
-    ["Total L1 Answered", String(metrics.l1Answered)],
-    ["Total L2 Triggered", String(metrics.l2Triggered)],
-    ["Total L2 Applicable", String(metrics.l2Applicable)],
-    ["Total Ya/Ada", String(metrics.counts.compliant)],
-    ["Total Sebagian", String(metrics.counts.partial)],
-    ["Total Tidak/Tidak Ada", String(metrics.counts.gap)],
-    ["Total Tidak Tahu", String(metrics.counts.unknown)],
+    ["Template Version", selfAssessmentTemplateVersion],
+    ["Excel Source Version", selfAssessmentSourceWorkbook],
+    ["Total Kontrol", String(metrics.totalControls)],
+    ["Kontrol Dinilai", String(metrics.applicableControls)],
+    ["Total Sudah Ada", String(metrics.counts.compliant)],
+    ["Total Dalam Proses", String(metrics.counts.partial)],
+    ["Total Belum Ada", String(metrics.counts.gap)],
+    ["Total Belum dijawab", String(metrics.counts.unknown)],
     ["Total Tidak Relevan/N/A Valid", String(metrics.counts.naValid)],
     ["Questions Requiring Evidence", String(metrics.evidenceRequiredCount)],
     ["Evidence Uploaded", String(metrics.evidenceUploadedCount)],
@@ -668,12 +673,12 @@ function drawAbbreviations(kit: PdfKit) {
 function drawExecutiveSummary(kit: PdfKit, metrics: ReportMetrics) {
   newPage(kit, "Executive Summary");
   drawSectionTitle(kit, "Executive Summary");
-  paragraph(kit, `Assessment ini dilakukan untuk menilai tingkat pemenuhan kewajiban Pelindungan Data Pribadi pada unit ${metrics.unitName} berdasarkan pertanyaan Level 2 yang terpicu dari hasil screening relevansi Level 1. Level 1 digunakan untuk menentukan relevansi proses unit kerja, sedangkan scoring report dihitung dari pertanyaan Level 2 yang applicable.`, margin, contentWidth, 10.2, 15, 6);
-  paragraph(kit, `Berdasarkan ${metrics.l2Applicable} pertanyaan Level 2 yang applicable, unit memperoleh PDP Readiness Score sebesar ${formatScore(metrics.readinessScore)} dan Self-Declared Fulfillment Score sebesar ${formatScore(metrics.selfDeclaredFulfillmentScore)}. Overall Compliance Level berada pada kategori ${metrics.overallComplianceLevel}.`, margin, contentWidth, 10.2, 15, 6);
-  paragraph(kit, `Assessment mengidentifikasi ${metrics.counts.gap} control gap, ${metrics.counts.partial} partial fulfillment, ${metrics.counts.unknown} clarification item, dan ${metrics.evidenceGapCount} evidence gap. Area dengan perhatian tertinggi adalah ${metrics.topWeakAreas}.`, margin, contentWidth, 10.2, 15, 6);
-  paragraph(kit, `Evidence Confidence berada pada angka ${formatScore(metrics.evidenceConfidence)}. Angka ini menunjukkan sejauh mana jawaban unit telah didukung oleh evidence yang memadai. Jika evidence belum tersedia atau masih lemah, pemenuhan kontrol belum dapat dibuktikan secara kuat meskipun unit menjawab Ya/Ada.`, margin, contentWidth, 10.2, 15, 6);
+  paragraph(kit, `Assessment ini dilakukan untuk menilai tingkat pemenuhan kewajiban Pelindungan Data Pribadi pada unit ${metrics.unitName} berdasarkan seluruh kontrol audit dalam kertas kerja Pengendali Data Pribadi. Setiap kontrol dinilai langsung; scoring dihitung dari kontrol yang applicable.`, margin, contentWidth, 10.2, 15, 6);
+  paragraph(kit, `Berdasarkan ${metrics.applicableControls} kontrol audit yang applicable, unit memperoleh PDP Readiness Score sebesar ${formatScore(metrics.readinessScore)} dan Self-Declared Fulfillment Score sebesar ${formatScore(metrics.selfDeclaredFulfillmentScore)}. Overall Compliance Level berada pada kategori ${metrics.overallComplianceLevel}.`, margin, contentWidth, 10.2, 15, 6);
+  paragraph(kit, `Assessment mengidentifikasi ${metrics.counts.gap} control gap, ${metrics.counts.partial} partial fulfillment, ${metrics.clarificationCount} clarification item, dan ${metrics.evidenceGapCount} evidence gap. Area dengan perhatian tertinggi adalah ${metrics.topWeakAreas}.`, margin, contentWidth, 10.2, 15, 6);
+  paragraph(kit, `Evidence Confidence berada pada angka ${formatScore(metrics.evidenceConfidence)}. Angka ini menunjukkan sejauh mana jawaban unit telah didukung oleh evidence yang memadai. Jika evidence belum tersedia atau masih lemah, pemenuhan kontrol belum dapat dibuktikan secara kuat meskipun unit menjawab Sudah Ada.`, margin, contentWidth, 10.2, 15, 6);
   if ((metrics.evidenceConfidence ?? 100) < 50 && metrics.evidenceGapCount > 0) {
-    paragraph(kit, `Walaupun ${metrics.counts.compliant} kontrol dijawab Ya/Ada, sebagian jawaban tersebut belum didukung evidence yang memadai. Karena itu, isu utama assessment bukan hanya control gap, tetapi juga auditability dan pembuktian akuntabilitas.`, margin, contentWidth, 10.2, 15, 6);
+    paragraph(kit, `Walaupun ${metrics.counts.compliant} kontrol dijawab Sudah Ada, sebagian jawaban tersebut belum didukung evidence yang memadai. Karena itu, isu utama assessment bukan hanya control gap, tetapi juga auditability dan pembuktian akuntabilitas.`, margin, contentWidth, 10.2, 15, 6);
   }
   paragraph(kit, `Risiko utama yang terindikasi berkaitan dengan ${metrics.keyRiskAreas}. Risiko ini perlu ditindaklanjuti melalui validasi Legal/DPO, penguatan evidence, dan penyusunan action plan oleh owner terkait.`, margin, contentWidth, 10.2, 15, 6);
   paragraph(kit, "Prioritas tindak lanjut direkomendasikan dalam tiga tahap: tindakan 0-30 hari untuk gap kritikal atau high priority, tindakan 31-60 hari untuk penguatan kontrol utama, dan tindakan 61-90 hari untuk penyempurnaan evidence, dokumentasi, dan monitoring.", margin, contentWidth, 10.2, 15, 8);
@@ -686,30 +691,30 @@ function drawIntroduction(kit: PdfKit) {
   drawSectionTitle(kit, "Introduction");
   [
     "UU PDP menempatkan kewajiban pada pengendali dan prosesor Data Pribadi untuk memastikan bahwa pemrosesan Data Pribadi dilakukan secara sah, transparan, terbatas, aman, dan dapat dibuktikan. Dalam konteks organisasi, pemenuhan kewajiban tersebut perlu dinilai pada level unit kerja karena setiap unit dapat memiliki peran, proses, data, sistem, vendor, dan risiko yang berbeda.",
-    "Self-assessment ini dirancang dengan dua level. Level 1 berfungsi sebagai screening relevansi untuk menentukan apakah suatu modul Level 2 perlu dijawab oleh unit. Level 2 berisi pertanyaan kontrol yang lebih spesifik dan menjadi dasar perhitungan score, gap analysis, evidence request, dan action plan.",
+    "Self-assessment menggunakan satu lapis kontrol audit, dikelompokkan per BAB dan bagian UU PDP sesuai kertas kerja. Isi pasal, kontrol audit, tujuan, dan contoh bukti menjadi acuan pengisian dan tindak lanjut.",
     "Report ini menyajikan hasil assessment dalam bentuk gap analysis. Tujuannya bukan hanya menampilkan skor, tetapi juga mengidentifikasi kondisi saat ini, kondisi yang diharapkan, gap, risiko, evidence yang perlu dilengkapi, serta rekomendasi remediasi.",
   ].forEach((item) => paragraph(kit, item, margin, contentWidth, 10.5, 16, 8));
 }
 
 function drawScopeBoundary(kit: PdfKit, metrics: ReportMetrics) {
   drawSectionTitle(kit, "Scope and Assessment Boundary");
-  paragraph(kit, "Scope assessment dibatasi pada proses, aktivitas, dan modul Level 2 yang terpicu berdasarkan jawaban Level 1. Modul yang tidak relevan tidak dihitung sebagai gap dan tidak dimasukkan ke dalam denominator scoring.", margin, contentWidth, 10, 15, 8);
+  paragraph(kit, "Scope assessment mencakup seluruh kontrol audit pada kertas kerja. Kontrol yang dinyatakan Tidak Relevan dengan alasan dikeluarkan dari denominator scoring.", margin, contentWidth, 10, 15, 8);
   paragraph(kit, `Area assessment yang relevan untuk unit ini mencakup ${metrics.triggeredModules.length ? metrics.triggeredModules.map(getModuleDisplayName).join(", ") : "metadata tidak tersedia"}.`, margin, contentWidth, 10, 15, 8);
   paragraph(kit, `Area berikut tidak masuk scope karena tidak terpicu atau dinyatakan tidak relevan: ${metrics.excludedModules.length ? metrics.excludedModules.map(getModuleDisplayName).join(", ") : "metadata tidak tersedia"}.`, margin, contentWidth, 10, 15, 8);
-  paragraph(kit, "Limitasi utama assessment ini adalah ketergantungan pada jawaban unit dan evidence yang tersedia pada saat pengisian. Item dengan jawaban Tidak Tahu atau Tidak Relevan tanpa alasan perlu diklarifikasi sebelum digunakan sebagai kesimpulan final.", margin, contentWidth, 10, 15, 8);
+  paragraph(kit, "Limitasi utama assessment ini adalah ketergantungan pada jawaban unit dan evidence yang tersedia pada saat pengisian. Item dengan jawaban Belum dijawab atau Tidak Relevan tanpa alasan perlu diklarifikasi sebelum digunakan sebagai kesimpulan final.", margin, contentWidth, 10, 15, 8);
 }
 
 function drawMethodology(kit: PdfKit) {
   newPage(kit, "Methodology");
   drawSectionTitle(kit, "Methodology");
   [
-    "Metodologi assessment menggunakan pendekatan closed-answer. Setiap pertanyaan Level 2 dijawab dengan Ya/Ada, Sebagian, Tidak/Tidak Ada, Tidak Tahu, atau Tidak Relevan/N/A. Jawaban tersebut digunakan untuk menghitung tingkat pemenuhan kontrol, gap, partial fulfillment, uncertainty, dan evidence confidence.",
+    "Metodologi assessment menggunakan pendekatan closed-answer. Setiap kontrol dijawab dengan Sudah Ada, Dalam Proses, Belum Ada, atau Tidak Relevan. Jawaban tersebut digunakan untuk menghitung tingkat pemenuhan kontrol, gap, partial fulfillment, uncertainty, dan evidence confidence.",
     "Assessment ini bukan penilaian level kematangan. Oleh karena itu, report tidak menggunakan level kematangan. Score yang digunakan adalah PDP Readiness Score, Self-Declared Fulfillment Score, Evidence-Verified Score, dan Evidence Confidence.",
-    "Level 1 tidak dihitung dalam score final. Level 1 hanya digunakan untuk menentukan relevansi unit dan memicu pertanyaan Level 2.",
-    "Level 2 menjadi dasar utama scoring, gap analysis, risk exposure, evidence request, dan action plan.",
+    "Seluruh kontrol audit tersedia langsung tanpa screening berjenjang. Pengelompokan per BAB hanya digunakan untuk navigasi.",
+    "Kontrol audit menjadi dasar scoring, gap analysis, evidence request, dan action plan.",
     "Jawaban Tidak Relevan/N/A hanya dikeluarkan dari perhitungan jika disertai alasan yang memadai. Jika alasan tidak tersedia, item tersebut masuk daftar klarifikasi.",
-    "Jawaban Tidak Tahu menunjukkan bahwa unit belum dapat memastikan kondisi kontrol. Item ini tidak langsung disimpulkan sebagai pelanggaran, tetapi harus ditindaklanjuti melalui klarifikasi.",
-    "Evidence tidak mengubah jawaban utama. Namun, evidence memengaruhi tingkat keyakinan atas jawaban tersebut. Jawaban Ya/Ada tanpa evidence yang memadai akan ditandai sebagai Evidence Gap.",
+    "Jawaban Belum dijawab menunjukkan bahwa unit belum dapat memastikan kondisi kontrol. Item ini tidak langsung disimpulkan sebagai pelanggaran, tetapi harus ditindaklanjuti melalui klarifikasi.",
+    "Evidence tidak mengubah jawaban utama. Namun, evidence memengaruhi tingkat keyakinan atas jawaban tersebut. Jawaban Sudah Ada tanpa evidence yang memadai akan ditandai sebagai Evidence Gap.",
   ].forEach((item) => paragraph(kit, item, margin, contentWidth, 10, 15, 5));
 }
 
@@ -719,23 +724,23 @@ function drawScoringDictionary(kit: PdfKit) {
     kit,
     ["Jawaban", "Makna", "Nilai"],
     [
-      ["Ya/Ada", "Kontrol dinyatakan tersedia atau berjalan", "1"],
-      ["Sebagian", "Kontrol tersedia sebagian atau belum lengkap", "0.5"],
-      ["Tidak/Tidak Ada", "Kontrol tidak tersedia atau belum berjalan", "0"],
-      ["Tidak Tahu", "Kondisi belum dapat dikonfirmasi", "0 untuk Readiness Score dan masuk clarification"],
+      ["Sudah Ada", "Kontrol dinyatakan tersedia atau berjalan", "1"],
+      ["Dalam Proses", "Kontrol tersedia sebagian atau belum lengkap", "0.5"],
+      ["Belum Ada", "Kontrol tidak tersedia atau belum berjalan", "0"],
+      ["Belum dijawab", "Kondisi belum dapat dikonfirmasi", "0 untuk Readiness Score dan masuk clarification"],
       ["Tidak Relevan/N/A", "Tidak berlaku untuk unit/proses", "Excluded jika alasan valid"],
     ],
     [112, 250, contentWidth - 362],
   );
-  paragraph(kit, "PDP Readiness Score menunjukkan tingkat kesiapan berdasarkan seluruh pertanyaan applicable, termasuk item Tidak Tahu sebagai belum terverifikasi.", margin, contentWidth, 9.6, 14, 8);
+  paragraph(kit, "PDP Readiness Score menunjukkan tingkat kesiapan berdasarkan seluruh pertanyaan applicable, termasuk item Belum dijawab sebagai belum terverifikasi.", margin, contentWidth, 9.6, 14, 8);
   paragraph(kit, "Self-Declared Fulfillment Score menunjukkan pemenuhan berdasarkan jawaban unit. Evidence-Verified Score dan Evidence Confidence menunjukkan sejauh mana jawaban tersebut sudah didukung evidence yang adequate atau strong.", margin, contentWidth, 9.6, 14, 4);
 }
 
 function drawCurrentState(kit: PdfKit, metrics: ReportMetrics) {
   newPage(kit, "Current State");
   drawSectionTitle(kit, "Current State of PDP Compliance");
-  paragraph(kit, "Current state menggambarkan kondisi pemenuhan PDP berdasarkan jawaban unit pada pertanyaan Level 2 yang applicable. Bagian ini membedakan self-declared fulfilled areas, verified fulfilled areas, unverified fulfilled areas, priority weaknesses, dan evidence weaknesses.", margin, contentWidth, 10, 15, 8);
-  paragraph(kit, `Self-declared fulfilled areas adalah area yang dijawab Ya/Ada oleh unit. Verified fulfilled areas adalah area yang didukung evidence adequate atau strong. Unverified fulfilled areas adalah area yang dijawab Ya/Ada tetapi evidence belum memadai.`, margin, contentWidth, 10, 15, 5);
+  paragraph(kit, "Current state menggambarkan kondisi pemenuhan PDP berdasarkan jawaban unit pada kontrol audit yang applicable. Bagian ini membedakan self-declared fulfilled areas, verified fulfilled areas, unverified fulfilled areas, priority weaknesses, dan evidence weaknesses.", margin, contentWidth, 10, 15, 8);
+  paragraph(kit, `Self-declared fulfilled areas adalah area yang dijawab Sudah Ada oleh unit. Verified fulfilled areas adalah area yang didukung evidence adequate atau strong. Unverified fulfilled areas adalah area yang dijawab Sudah Ada tetapi evidence belum memadai.`, margin, contentWidth, 10, 15, 5);
   if (metrics.topStrongAreas !== "metadata tidak tersedia") paragraph(kit, `Area dengan self-declared fulfillment tertinggi adalah ${metrics.topStrongAreas}. Area ini belum otomatis menjadi area yang kuat secara audit bila Evidence Confidence masih rendah.`, margin, contentWidth, 10, 15, 5);
   const limitedStrong = metrics.areaRows
     .filter((row) => (row.fulfillmentScore ?? 0) >= 90 && row.applicable > 0 && row.applicable < 3)
@@ -756,8 +761,8 @@ function drawCurrentState(kit: PdfKit, metrics: ReportMetrics) {
   if (evidenceAreas.length) {
     paragraph(kit, `Evidence weaknesses utama adalah ${evidenceAreas.join(", ")}. Area ini memiliki jawaban kontrol yang perlu diperkuat dengan bukti pendukung.`, margin, contentWidth, 10, 15, 5);
   }
-  if (metrics.topWeakAreas !== "metadata tidak tersedia") paragraph(kit, `Area dengan gap tertinggi adalah ${metrics.topWeakAreas}. Area tersebut perlu menjadi prioritas karena memiliki kombinasi jawaban Tidak/Tidak Ada, Sebagian, atau evidence gap.`, margin, contentWidth, 10, 15, 5);
-  if (metrics.counts.unknown) paragraph(kit, `Terdapat ${metrics.counts.unknown} item Tidak Tahu. Item ini belum dapat dinilai secara final dan perlu diklarifikasi dengan process owner atau fungsi terkait.`, margin, contentWidth, 10, 15, 5);
+  if (metrics.topWeakAreas !== "metadata tidak tersedia") paragraph(kit, `Area dengan gap tertinggi adalah ${metrics.topWeakAreas}. Area tersebut perlu menjadi prioritas karena memiliki kombinasi jawaban Belum Ada, Dalam Proses, atau evidence gap.`, margin, contentWidth, 10, 15, 5);
+  if (metrics.counts.unknown) paragraph(kit, `Terdapat ${metrics.counts.unknown} item Belum dijawab. Item ini belum dapat dinilai secara final dan perlu diklarifikasi dengan process owner atau fungsi terkait.`, margin, contentWidth, 10, 15, 5);
   if (metrics.evidenceGapCount) paragraph(kit, `Terdapat ${metrics.evidenceGapCount} item Evidence Gap. Artinya, unit telah memberikan jawaban, tetapi evidence yang tersedia belum cukup untuk membuktikan pemenuhan kontrol.`, margin, contentWidth, 10, 15, 5);
   drawCategoryFulfillmentScore(kit, metrics);
   drawStatusByCategory(kit, metrics);
@@ -777,10 +782,10 @@ function drawPositiveFindings(kit: PdfKit, metrics: ReportMetrics) {
   const evidenceOnly = metrics.areaRows
     .filter((row) => row.compliant > 0 && row.evidenceGap > 0 && row.gap === 0)
     .slice(0, 6);
-  paragraph(kit, "Bagian ini mencatat area yang dinyatakan terpenuhi oleh unit. Area tersebut tetap perlu dibaca bersama Evidence Confidence karena jawaban Ya/Ada tanpa evidence belum dapat dianggap audit-ready.", margin, contentWidth, 10, 15, 8);
+  paragraph(kit, "Bagian ini mencatat area yang dinyatakan terpenuhi oleh unit. Area tersebut tetap perlu dibaca bersama Evidence Confidence karena jawaban Sudah Ada tanpa evidence belum dapat dianggap audit-ready.", margin, contentWidth, 10, 15, 8);
   if (selfDeclared.length) {
     drawSectionSubtitle(kit, "Self-declared fulfilled controls");
-    drawTable(kit, ["Area", "Ya/Ada", "Evidence Gap", "Evidence Confidence"], selfDeclared.map((row) => [row.area, String(row.compliant), String(row.evidenceGap), formatScore(row.evidenceConfidence)]), [220, 70, 90, contentWidth - 380], 26);
+    drawTable(kit, ["Area", "Sudah Ada", "Evidence Gap", "Evidence Confidence"], selfDeclared.map((row) => [row.area, String(row.compliant), String(row.evidenceGap), formatScore(row.evidenceConfidence)]), [220, 70, 90, contentWidth - 380], 26);
   }
   if (verified.length) {
     drawSectionSubtitle(kit, "Verified fulfilled controls");
@@ -803,7 +808,7 @@ function drawDesiredState(kit: PdfKit, metrics: ReportMetrics) {
     `Untuk prinsip ${getPrincipleDisplayName(principle)}, kondisi yang diharapkan adalah tersedianya proses, dokumen, kontrol, dan evidence yang menunjukkan bahwa ${desiredConditions[principle] ?? "kewajiban PDP terkait dapat dipenuhi dan dibuktikan secara memadai."}`,
   ]);
   drawTable(kit, ["Prinsip", "Desired Condition"], rows, [150, contentWidth - 150], 48);
-  drawSectionSubtitle(kit, "Desired State per Triggered Category");
+  drawSectionSubtitle(kit, "Desired State per Kontrol Prioritas");
   const categoryRows = metrics.consolidatedFindings.slice(0, 8).map((finding) => [
     finding.title,
     finding.template.desired,
@@ -833,7 +838,7 @@ function drawGapIdentification(kit: PdfKit, metrics: ReportMetrics) {
   if (controlRows.length) {
     drawTable(kit, ["Finding ID", "Area", "Kontrol yang belum terpenuhi", "Jawaban", "Prinsip PDP", "Pasal", "Risiko utama", "Priority", "Owner", "Timeline"], controlRows, [36, 50, 90, 38, 52, 38, 58, 34, 50, 65], 34);
   } else {
-    paragraph(kit, "Tidak ada control gap berdasarkan jawaban Tidak/Tidak Ada.", margin, contentWidth, 10, 15, 8);
+    paragraph(kit, "Tidak ada control gap berdasarkan jawaban Belum Ada.", margin, contentWidth, 10, 15, 8);
   }
   drawSectionSubtitle(kit, "Evidence Gap Register");
   const evidenceRows = metrics.evidenceGapItems.slice(0, 10).map((item, index) => [
@@ -866,9 +871,14 @@ function drawGapPrioritization(kit: PdfKit, metrics: ReportMetrics) {
 }
 
 function drawRadarSection(kit: PdfKit, metrics: ReportMetrics) {
+  if (!metrics.scoringQuestions.some((item) => item.question.categoryScoring)) {
+    drawSectionTitle(kit, "Pemetaan Prinsip PDP");
+    paragraph(kit, "Kertas kerja mengelompokkan kontrol per BAB dan pasal. Pemetaan setiap kontrol ke delapan prinsip PDP tidak tersedia pada sumber; radar prinsip tidak dihitung. Pemenuhan per bagian ditampilkan pada analisis kategori.", margin, contentWidth, 10, 15, 8);
+    return;
+  }
   newPage(kit, "PDP Principle Fulfillment Radar");
   drawSectionTitle(kit, "PDP Principle Fulfillment Radar");
-  paragraph(kit, "Radar berikut menunjukkan tingkat pemenuhan berdasarkan prinsip PDP. Nilai dihitung dari pertanyaan Level 2 yang applicable dan dipetakan ke prinsip terkait. Prinsip yang tidak memiliki pertanyaan applicable ditampilkan sebagai N/A dan tidak dianggap sebagai skor 0.", margin, contentWidth, 10, 15, 8);
+  paragraph(kit, "Radar berikut menunjukkan tingkat pemenuhan berdasarkan prinsip PDP. Nilai dihitung dari kontrol audit yang applicable dan dipetakan ke prinsip terkait. Prinsip yang tidak memiliki pertanyaan applicable ditampilkan sebagai N/A dan tidak dianggap sebagai skor 0.", margin, contentWidth, 10, 15, 8);
   drawRadarChart(kit, metrics);
   text(kit, "Figure 5. PDP Principle Fulfillment Radar", margin, kit.y, 8.5, kit.bold, muted);
   kit.y -= 18;
@@ -888,10 +898,10 @@ function drawCategoryModuleAnalysis(kit: PdfKit, metrics: ReportMetrics) {
     String(row.unknown),
     String(row.evidenceGap),
   ]);
-  drawTable(kit, ["Area", "Module", "Fulfillment", "Ya", "Partial", "Gap", "Unknown", "Evidence Gap"], rows, [100, 110, 56, 28, 38, 30, 42, 107], 28);
+  drawTable(kit, ["Area", "Module", "Fulfillment", "Sudah Ada", "Dalam Proses", "Gap", "Unknown", "Evidence Gap"], rows, [100, 110, 56, 28, 38, 30, 42, 107], 28);
   const weak = metrics.areaRows.find((row) => row.gap || row.partial || row.evidenceGap);
   const strong = metrics.areaRows.find((row) => (row.fulfillmentScore ?? 0) >= 75);
-  if (strong) paragraph(kit, `Kategori ${strong.area} menunjukkan tingkat pemenuhan ${formatScore(strong.fulfillmentScore)} dengan ${strong.compliant} jawaban Ya/Ada dan ${strong.gap} gap.`, margin, contentWidth, 9.5, 14, 6);
+  if (strong) paragraph(kit, `Kategori ${strong.area} menunjukkan tingkat pemenuhan ${formatScore(strong.fulfillmentScore)} dengan ${strong.compliant} jawaban Sudah Ada dan ${strong.gap} gap.`, margin, contentWidth, 9.5, 14, 6);
   if (weak) paragraph(kit, `Kategori ${weak.area} memerlukan perhatian karena memiliki ${weak.gap} gap, ${weak.partial} partial fulfillment, dan ${weak.evidenceGap} evidence gap.`, margin, contentWidth, 9.5, 14, 4);
 }
 
@@ -899,7 +909,7 @@ function drawRiskExposureAnalysis(kit: PdfKit, metrics: ReportMetrics) {
   newPage(kit, "Risk Exposure Analysis");
   drawSectionTitle(kit, "Risk Exposure Analysis");
   [
-    "Risk exposure disusun berdasarkan risk metadata pada setiap pertanyaan Level 2. Analisis ini bersifat indikatif dan perlu divalidasi oleh Legal/DPO sebelum digunakan sebagai kesimpulan hukum final.",
+    "Risk exposure disusun berdasarkan risk metadata pada setiap kontrol audit. Analisis ini bersifat indikatif dan perlu divalidasi oleh Legal/DPO sebelum digunakan sebagai kesimpulan hukum final.",
     "Risiko administratif terindikasi apabila gap berkaitan dengan kewajiban yang dapat dikenai sanksi administratif berdasarkan UU PDP, seperti peringatan tertulis, penghentian sementara kegiatan pemrosesan, penghapusan atau pemusnahan Data Pribadi, dan/atau denda administratif sesuai ketentuan yang berlaku.",
     "Risiko gugatan atau ganti rugi terindikasi apabila gap berpotensi menimbulkan kerugian bagi Subjek Data Pribadi atau melemahkan kemampuan organisasi untuk membuktikan pemenuhan kewajiban PDP.",
     "Indikasi risiko pidana tidak boleh disimpulkan secara otomatis dari self-assessment. Risiko ini hanya perlu dicatat untuk validasi Legal/DPO apabila terdapat indikasi unsur sengaja dan melawan hukum sesuai pasal terkait.",
@@ -918,8 +928,8 @@ function drawEvidenceQualityAnalysis(kit: PdfKit, metrics: ReportMetrics) {
   }
   const yesWithoutEvidence = metrics.reportQuestions.filter((item) => item.normalized === "COMPLIANT" && item.evidenceRequired && !item.evidenceFiles.length).length;
   const partialWeak = metrics.reportQuestions.filter((item) => item.normalized === "PARTIAL" && item.evidenceRequired && !["Adequate", "Strong"].includes(item.evidenceStrength)).length;
-  if (yesWithoutEvidence) paragraph(kit, `Terdapat ${yesWithoutEvidence} jawaban Ya/Ada yang belum didukung evidence memadai. Item tersebut tidak otomatis menjadi gap kontrol, tetapi perlu ditindaklanjuti sebagai Evidence Gap.`, margin, contentWidth, 9.8, 14, 5);
-  if (partialWeak) paragraph(kit, `Terdapat ${partialWeak} jawaban Sebagian dengan evidence lemah atau belum tersedia. Item tersebut perlu dilengkapi agar status pemenuhan dapat diverifikasi.`, margin, contentWidth, 9.8, 14, 8);
+  if (yesWithoutEvidence) paragraph(kit, `Terdapat ${yesWithoutEvidence} jawaban Sudah Ada yang belum didukung evidence memadai. Item tersebut tidak otomatis menjadi gap kontrol, tetapi perlu ditindaklanjuti sebagai Evidence Gap.`, margin, contentWidth, 9.8, 14, 5);
+  if (partialWeak) paragraph(kit, `Terdapat ${partialWeak} jawaban Dalam Proses dengan evidence lemah atau belum tersedia. Item tersebut perlu dilengkapi agar status pemenuhan dapat diverifikasi.`, margin, contentWidth, 9.8, 14, 8);
   if (metrics.auditReadiness === "Low") {
     drawBox(kit, margin, kit.y, contentWidth, 58, rgb(1, 0.96, 0.88), rgb(0.95, 0.64, 0.20));
     text(kit, "Audit Readiness: Low", margin + 12, kit.y - 18, 10.5, kit.bold, amber);
@@ -1062,7 +1072,7 @@ function drawManagementDecisions(kit: PdfKit, metrics: ReportMetrics) {
     ["MD-02", "Menyetujui timeline 30/60/90 hari", "Roadmap remediation", "Management"],
     ["MD-03", "Menetapkan evidence standard", `${metrics.evidenceGapCount} evidence gap`, "DPO + Legal"],
     ["MD-04", "Menyetujui prioritas review DPO", `${metrics.clarificationCount} clarification item`, "DPO"],
-    ["MD-05", "Menyetujui vendor remediation plan", "Jika area vendor/prosesor triggered", "Procurement + Legal"],
+    ["MD-05", "Menyetujui vendor remediation plan", "Untuk kontrol vendor/prosesor yang applicable", "Procurement + Legal"],
     ["MD-06", "Menentukan kebutuhan validasi onsite/interview", metrics.auditReadiness === "Low" ? "Direkomendasikan" : "Opsional", "DPO + Unit"],
     ["MD-07", "Menetapkan monitoring cadence sampai gap selesai", "Weekly/bi-weekly sampai action plan closed", "Management + DPO"],
   ];
@@ -1107,7 +1117,7 @@ function drawConclusion(kit: PdfKit, metrics: ReportMetrics) {
   newPage(kit, "Conclusion");
   drawSectionTitle(kit, "Conclusion");
   paragraph(kit, `Assessment menunjukkan bahwa unit ${metrics.unitName} memiliki PDP Readiness Score sebesar ${formatScore(metrics.readinessScore)}, Self-Declared Fulfillment Score sebesar ${formatScore(metrics.selfDeclaredFulfillmentScore)}, dan Evidence Confidence sebesar ${formatScore(metrics.evidenceConfidence)}. Overall Compliance Level adalah ${metrics.overallComplianceLevel}. Hasil ini menunjukkan bahwa terdapat area yang telah terpenuhi, namun masih terdapat control gap, partial fulfillment, uncertainty, dan evidence gap yang perlu ditindaklanjuti.`, margin, contentWidth, 10.5, 16, 8);
-  paragraph(kit, `Prioritas utama adalah ${metrics.topPriorityAreas}. Tindak lanjut perlu difokuskan pada validasi item Tidak Tahu, penguatan evidence, penyelesaian gap High/Critical, dan pelaksanaan roadmap remediasi.`, margin, contentWidth, 10.5, 16, 8);
+  paragraph(kit, `Prioritas utama adalah ${metrics.topPriorityAreas}. Tindak lanjut perlu difokuskan pada validasi item Belum dijawab, penguatan evidence, penyelesaian gap High/Critical, dan pelaksanaan roadmap remediasi.`, margin, contentWidth, 10.5, 16, 8);
   paragraph(kit, "Report ini dapat digunakan sebagai dasar awal untuk diskusi antara unit, DPO, Legal, dan fungsi terkait dalam menyusun action plan dan memastikan pemenuhan UU PDP dapat dibuktikan secara memadai.", margin, contentWidth, 10.5, 16, 8);
 }
 
@@ -1115,7 +1125,7 @@ function drawAppendix(kit: PdfKit, input: PdfAssessment, metrics: ReportMetrics)
   newPage(kit, "Appendix");
   drawSectionTitle(kit, "Appendix");
   [
-    "Appendix A - Full L2 Triggered Responses",
+    "Appendix A - Full Control Responses",
     "Appendix B - N/A List and Reasons",
     "Appendix C - Unknown and Clarification List",
     "Appendix D - Evidence Request List",
@@ -1127,8 +1137,8 @@ function drawAppendix(kit: PdfKit, input: PdfAssessment, metrics: ReportMetrics)
     "Appendix J - Excel Metadata Version",
   ].forEach((item) => bullet(kit, item));
   kit.y -= 10;
-  drawSectionTitle(kit, "Appendix A - Full L2 Triggered Responses");
-  const rows = metrics.reportQuestions.slice(0, 45).map((item) => [
+  drawSectionTitle(kit, "Appendix A - Full Control Responses");
+  const rows = metrics.reportQuestions.map((item) => [
     item.question.id,
     getQuestionAreaDisplayName(item.question),
     item.answer || "Belum dijawab",
@@ -1145,7 +1155,7 @@ function drawAppendix(kit: PdfKit, input: PdfAssessment, metrics: ReportMetrics)
   drawTable(kit, ["Internal ID", "Area", "Evidence Minimum", "Owner", "Priority"], metrics.reportQuestions.filter((item) => item.isEvidenceGap || item.isEvidenceRequest).slice(0, 60).map((item) => [item.question.id, getQuestionAreaDisplayName(item.question), item.question.minimumEvidence || item.question.evidence || "-", ownerForFinding(item.question), item.priority]), [58, 116, 190, 86, contentWidth - 450], 26);
   drawSectionTitle(kit, "Appendix E - Scoring Calculation Detail");
   drawKeyValueTable(kit, [
-    ["Applicable L2", String(metrics.l2Applicable)],
+    ["Kontrol Applicable", String(metrics.applicableControls)],
     ["PDP Readiness Score", formatScore(metrics.readinessScore)],
     ["Self-Declared Fulfillment Score", formatScore(metrics.selfDeclaredFulfillmentScore)],
     ["Evidence-Verified Score", metrics.evidenceVerifiedScore === null ? "Not yet verifiable" : formatScore(metrics.evidenceVerifiedScore)],
@@ -1161,21 +1171,21 @@ function drawAppendix(kit: PdfKit, input: PdfAssessment, metrics: ReportMetrics)
   drawSectionTitle(kit, "Appendix H - Question-to-Principle Mapping");
   drawTable(kit, ["Internal ID", "Principle", "Area Assessment"], metrics.reportQuestions.slice(0, 60).map((item) => [item.question.id, getPrincipleDisplayName(item.question.categoryScoring || item.question.principleCategory), getQuestionAreaDisplayName(item.question)]), [58, 190, contentWidth - 248], 24);
   drawSectionTitle(kit, "Appendix I - Internal ID Mapping");
-  drawTable(kit, ["Internal ID", "Display Label"], metrics.reportQuestions.slice(0, 60).map((item) => [item.question.id, getQuestionDisplayLabel(item.question.id, item.question)]), [70, contentWidth - 70], 24);
+  drawTable(kit, ["Internal ID", "Kontrol / Pasal", "Baris Sumber"], metrics.reportQuestions.map((item) => [item.question.id, getQuestionDisplayLabel(item.question.id, item.question), `${item.question.sourceSheet || "-"}, baris ${item.question.sourceRow || "-"}`]), [75, contentWidth - 175, 100], 24, true);
   drawSectionTitle(kit, "Appendix J - Excel Metadata Version");
   drawKeyValueTable(kit, [
-    ["Excel Source Version", "Self_Assessment_UU_PDP_Unit_Trigger_Risk_Evidence_ClosedAnswer_Codex_v5_Simplified.xlsx"],
+    ["Excel Source Version", "Siloam - Asesmen Kepatuhan PDP draft 1.0.xlsx"],
     ["Assessment ID", input.assessmentNumber],
     ["Generated Date", metrics.reportDate],
-    ["Template Version", "Self Assessment UU PDP Unit Trigger Risk Evidence v5 Simplified"],
+    ["Template Version", "Asesmen Kepatuhan PDP - Kontrol Pengendali 1.0"],
   ]);
 }
 
 function drawSummaryBoxes(kit: PdfKit, metrics: ReportMetrics) {
   const boxes = [
-    ["Temuan Utama", [`${metrics.counts.compliant} kontrol telah dijawab Ya/Ada.`, `${metrics.counts.partial} kontrol dijawab Sebagian.`, `${metrics.counts.gap} kontrol dijawab Tidak/Tidak Ada.`, `${metrics.counts.unknown} item memerlukan klarifikasi.`, `${metrics.evidenceGapCount} item memerlukan evidence tambahan.`]],
+    ["Temuan Utama", [`${metrics.counts.compliant} kontrol telah dijawab Sudah Ada.`, `${metrics.counts.partial} kontrol dijawab Dalam Proses.`, `${metrics.counts.gap} kontrol dijawab Belum Ada.`, `${metrics.clarificationCount} item memerlukan klarifikasi.`, `${metrics.evidenceGapCount} item memerlukan evidence tambahan.`]],
     ["Perhatian Manajemen", [`Fokus manajemen perlu diarahkan pada area ${metrics.topPriorityAreas} karena area tersebut memiliki kombinasi gap, risiko, dan kebutuhan evidence paling tinggi.`]],
-    ["Tindakan Cepat", ["Lengkapi evidence untuk kontrol yang sudah dijawab Ya/Ada.", "Validasi jawaban Tidak Tahu dengan owner proses.", "Lengkapi catatan alasan untuk setiap Tidak Relevan/N/A.", "Prioritaskan gap dengan severity High atau Critical."]],
+    ["Tindakan Cepat", ["Lengkapi evidence untuk kontrol yang sudah dijawab Sudah Ada.", "Validasi jawaban Belum dijawab dengan owner proses.", "Lengkapi catatan alasan untuk setiap Tidak Relevan/N/A.", "Prioritaskan gap dengan severity High atau Critical."]],
   ] as const;
   boxes.forEach(([title, lines]) => {
     ensureSpace(kit, 118);
@@ -1211,7 +1221,7 @@ function drawAnswerDistributionDonut(kit: PdfKit, metrics: ReportMetrics) {
   text(kit, "Figure 1. Answer Distribution", margin, kit.y - 178, 8.5, kit.bold, muted);
   text(
     kit,
-    `${metrics.l2Triggered} triggered L2 | ${metrics.l2Applicable} applicable for scoring`,
+    `${metrics.totalControls} kontrol audit | ${metrics.applicableControls} applicable for scoring`,
     margin + 210,
     kit.y - 160,
     8.5,
@@ -1463,7 +1473,7 @@ function drawMetricCards(kit: PdfKit, cards: string[][]) {
 }
 
 function drawKeyValueTable(kit: PdfKit, rows: string[][]) {
-  drawTable(kit, ["Field", "Value"], rows, [170, contentWidth - 170], 26);
+  drawTable(kit, ["Field", "Value"], rows, [170, contentWidth - 170], 24, true);
 }
 
 function drawTable(
@@ -1472,18 +1482,22 @@ function drawTable(
   rows: string[][],
   widths: number[],
   rowHeight = 28,
+  expandRows = false,
 ) {
+  const totalWidth = widths.reduce((sum, width) => sum + width, 0);
+  widths = widths.map((width) => width * contentWidth / totalWidth);
   ensureSpace(kit, 24 + Math.min(rows.length, 6) * rowHeight + 20);
   drawTableRow(kit, margin, kit.y, widths, 24, headers, navy, white, true);
   kit.y -= 24;
   rows.forEach((row, index) => {
-    if (kit.y - rowHeight < margin + 34) {
+    const height = expandRows ? Math.max(rowHeight, ...row.map((value, column) => wrapText(value || "-", kit.regular, 7.2, widths[column] - 8).length * 9.2 + 10)) : rowHeight;
+    if (kit.y - height < margin + 34) {
       newPage(kit, kit.section);
       drawTableRow(kit, margin, kit.y, widths, 24, headers, navy, white, true);
       kit.y -= 24;
     }
-    drawTableRow(kit, margin, kit.y, widths, rowHeight, row, index % 2 ? white : rgb(0.98, 0.99, 1), slate, false);
-    kit.y -= rowHeight;
+    drawTableRow(kit, margin, kit.y, widths, height, row, index % 2 ? white : rgb(0.98, 0.99, 1), slate, false);
+    kit.y -= height;
   });
   kit.y -= 12;
 }
@@ -1797,10 +1811,11 @@ function getQuestionAreaDisplayName(question: SelfAssessmentQuestion) {
 }
 
 function getQuestionDisplayLabel(_questionId: string, metadata: SelfAssessmentQuestion) {
-  return `${getQuestionAreaDisplayName(metadata)} - ${cleanQuestionToRequirement(metadata.question)}`;
+  return `${metadata.reference}: ${metadata.question}`;
 }
 
 function formatConsolidatedQuestionSummary(items: ReportQuestion[]) {
+  if (items.length === 1 && items[0].question.level === "SINGLE") return `Evaluasi kontrol ${items[0].question.reference}.`;
   const clusters = uniqueList(items.map((item) => cleanQuestionToRequirement(item.question.question))).slice(0, 4);
   return `Finding ini mengonsolidasikan kontrol terkait ${clusters.join("; ")}.`;
 }
@@ -1832,7 +1847,7 @@ function colorForComplianceLevel(level: ReportMetrics["overallComplianceLevel"])
 
 function coverInsight(metrics: ReportMetrics) {
   if (metrics.auditReadiness === "Low") {
-    return "Readiness dinyatakan cukup, tetapi pembuktian evidence belum memadai untuk audit-ready compliance.";
+    return `Pemenuhan kontrol ${formatScore(metrics.readinessScore)}; bukti pendukung belum memadai untuk kesiapan audit.`;
   }
   if (metrics.overallComplianceLevel === "Compliance") {
     return "Kontrol applicable telah terpenuhi secara substansi dan evidence utama tersedia untuk mendukung pembuktian.";
@@ -1847,6 +1862,7 @@ function hasCriminalRedFlag(item: ReportQuestion) {
 }
 
 function resolveIssueCluster(question: SelfAssessmentQuestion) {
+  if (question.level === "SINGLE") return `Kontrol ${question.reference}`;
   const moduleCode = (question.module || question.triggerOrOwner || "").toUpperCase();
   const blob = `${question.area} ${question.question} ${question.evidence} ${question.suggestedRemediation}`.toLowerCase();
   if (moduleCode === "M08") {
@@ -1997,6 +2013,12 @@ function buildPrincipleRows(metrics: ReportMetrics) {
 }
 
 function resolveFindingTemplate(question: SelfAssessmentQuestion) {
+  if (question.level === "SINGLE") return {
+    title: `Kontrol ${question.reference}`,
+    issue: question.question,
+    desired: `${question.question}\nTujuan: ${question.objective || "metadata tidak tersedia"}`,
+    recommendation: question.suggestedRemediation || "metadata tidak tersedia",
+  };
   const moduleCode = (question.module || question.triggerOrOwner || "").toUpperCase();
   if (moduleCode === "M01") return findingTemplates.ropa;
   if (moduleCode === "M02") return findingTemplates.legalBasis;
@@ -2030,6 +2052,7 @@ function resolveFindingTemplate(question: SelfAssessmentQuestion) {
 }
 
 function ownerForFinding(question: SelfAssessmentQuestion) {
+  if (question.level === "SINGLE") return question.owner || "Penanggung jawab kontrol (perlu ditetapkan)";
   const template = resolveFindingTemplate(question).title;
   if (template.includes("RoPA")) return "Process Owner + DPO/Legal";
   if (template.includes("Legal Basis")) return "Legal + Process Owner + DPO";
@@ -2138,7 +2161,7 @@ function buildConsolidatedFindings(items: ReportQuestion[]): ConsolidatedFinding
     const template = resolveFindingTemplate(item.question);
     const moduleCode = item.question.module || item.question.triggerOrOwner || "OTHER";
     const cluster = resolveIssueCluster(item.question);
-    const key = `${moduleCode}-${cluster}`;
+    const key = item.question.level === "SINGLE" ? item.question.id : `${moduleCode}-${cluster}`;
     const existing = groups.get(key) ?? {
       key,
       title: cluster,
@@ -2165,10 +2188,10 @@ function buildConsolidatedFindings(items: ReportQuestion[]): ConsolidatedFinding
 function summarizeFindingAnswers(items: ReportQuestion[]) {
   const counts = countStatuses(items);
   return [
-    counts.compliant ? `${counts.compliant} Ya/Ada` : "",
-    counts.partial ? `${counts.partial} Sebagian` : "",
-    counts.gap ? `${counts.gap} Tidak/Tidak Ada` : "",
-    counts.unknown ? `${counts.unknown} Tidak Tahu` : "",
+    counts.compliant ? `${counts.compliant} Sudah Ada` : "",
+    counts.partial ? `${counts.partial} Dalam Proses` : "",
+    counts.gap ? `${counts.gap} Belum Ada` : "",
+    counts.unknown ? `${counts.unknown} Belum dijawab` : "",
     counts.naInvalid ? `${counts.naInvalid} N/A tanpa alasan` : "",
   ]
     .filter(Boolean)
@@ -2202,6 +2225,9 @@ function buildConsolidatedRiskText(items: ReportQuestion[]) {
 }
 
 function categoryRiskFallback(question: SelfAssessmentQuestion, type: "administrative" | "civil" | "operational") {
+  if (question.level === "SINGLE") return type === "operational"
+    ? `Tujuan kontrol yang perlu dipastikan: ${question.objective || "metadata tidak tersedia"}`
+    : "metadata tidak tersedia; perlu validasi DPO/Legal";
   const template = resolveFindingTemplate(question).title;
   if (template.includes("Legal Basis")) return "Risiko utama adalah pemrosesan tanpa dasar yang dapat dibuktikan.";
   if (template.includes("RoPA")) return "Risiko utama adalah organisasi tidak dapat membuktikan aktivitas, tujuan, jenis data, PIC, retensi, dan pihak penerima.";

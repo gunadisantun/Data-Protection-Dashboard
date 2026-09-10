@@ -1,6 +1,12 @@
-import questionsData from "@/lib/self-assessment-questions.json";
+import questionsData from "@/lib/self-assessment-controller-questions.json";
+import legacyQuestionsData from "@/lib/self-assessment-questions.json";
+
+export const selfAssessmentTemplateVersion = "Asesmen Kepatuhan PDP - Kontrol Pengendali 1.0";
+export const selfAssessmentSourceWorkbook = "Siloam - Asesmen Kepatuhan PDP draft 1.0.xlsx";
+export const selfAssessmentControlAnswerValues = ["Sudah Ada", "Dalam Proses", "Belum Ada", "Tidak Relevan"] as const;
 
 export const selfAssessmentAnswerValues = [
+  ...selfAssessmentControlAnswerValues,
   "Ya",
   "Sebagian",
   "Tidak",
@@ -54,7 +60,14 @@ export type SelfAssessmentActionStatus =
 export type SelfAssessmentQuestion = {
   id: string;
   kind: SelfAssessmentKind;
-  level?: "L1" | "L2" | "L3";
+  level?: "L1" | "L2" | "L3" | "SINGLE";
+  chapter?: string;
+  section?: string;
+  objective?: string;
+  articleText?: string;
+  sourceWorkbook?: string;
+  sourceSheet?: string;
+  sourceRow?: number;
   number: number;
   triggerOrOwner: string;
   area: string;
@@ -165,19 +178,36 @@ export type NormalizedSelfAssessmentAnswer =
 export const selfAssessmentQuestions =
   questionsData as SelfAssessmentQuestion[];
 
+export const legacySelfAssessmentQuestions = legacyQuestionsData as SelfAssessmentQuestion[];
+
+export function hasCurrentSelfAssessmentAnswers(answers: SelfAssessmentAnswers) {
+  return selfAssessmentQuestions.some((question) => Boolean(answers[question.id]?.answer));
+}
+
+export function hasLegacySelfAssessmentAnswers(answers: SelfAssessmentAnswers) {
+  return legacySelfAssessmentQuestions.some((question) => {
+    const state = answers[question.id];
+    return Boolean(state?.answer || state?.note || state?.evidenceFiles?.length);
+  });
+}
+
+export function isValidNotRelevant(state?: SelfAssessmentAnswerState) {
+  return normalizeAnswer(state?.answer) === "NOT_RELEVANT" && Boolean(state?.note?.trim());
+}
+
 export function normalizeAnswer(answer: string | undefined | null): NormalizedSelfAssessmentAnswer {
-  if (answer === "Ya" || answer === "Ada") {
+  if (answer === "Ya" || answer === "Ada" || answer === "Sudah Ada") {
     return "COMPLIANT";
   }
   if (
-    answer === "Sebagian" ||
+    answer === "Sebagian" || answer === "Dalam Proses" ||
     answer === "1 - Initial" ||
     answer === "2 - Partial"
   ) {
     return "PARTIAL";
   }
   if (
-    answer === "Tidak" ||
+    answer === "Tidak" || answer === "Belum Ada" ||
     answer === "Tidak Ada" ||
     answer === "Belum" ||
     answer === "0 - Not Implemented"
@@ -270,7 +300,8 @@ export function calculateSelfAssessmentSummary(
   let score = 0;
 
   for (const question of questions) {
-    const answerScore = scoreAnswer(answers[question.id]?.answer);
+    const state = answers[question.id];
+    const answerScore = isValidNotRelevant(state) ? null : (scoreAnswer(state?.answer) ?? 0);
     if (answerScore === null) {
       continue;
     }
@@ -323,9 +354,12 @@ export function calculateSelfAssessmentSummary(
     status: statusFromPercentage(percentage),
     answered: questions.filter((question) => answers[question.id]?.answer).length,
     totalQuestions: questions.length,
-    gaps: questions.filter((question) =>
-      isSelfAssessmentGap(question, answers[question.id]),
-    ).length,
+    gaps: questions.filter((question) => normalizeAnswer(answers[question.id]?.answer) === "GAP").length,
+    partial: questions.filter((question) => normalizeAnswer(answers[question.id]?.answer) === "PARTIAL").length,
+    clarification: questions.filter((question) => {
+      const state = answers[question.id];
+      return normalizeAnswer(state?.answer) === "UNKNOWN" || (normalizeAnswer(state?.answer) === "NOT_RELEVANT" && !isValidNotRelevant(state));
+    }).length,
     byArea: mapScoreRows([...byArea.values()]).sort((a, b) =>
       a.area.localeCompare(b.area),
     ),
@@ -376,7 +410,7 @@ export function generateSelfAssessmentActionPlan(
 
 export function kindLabel(kind: SelfAssessmentKind) {
   return {
-    UNIT: "Level 1 Screening",
+    UNIT: "Kontrol Asesmen Pengendali",
     ADDITIONAL: "Level 2 Assessment",
     GOVERNANCE: "DPO Review",
   }[kind];
@@ -384,13 +418,14 @@ export function kindLabel(kind: SelfAssessmentKind) {
 
 export function allowedKindsForRole(role: "MasterAdmin" | "DPO" | "User") {
   void role;
-  return ["UNIT", "ADDITIONAL"] as SelfAssessmentKind[];
+  return ["UNIT"] as SelfAssessmentKind[];
 }
 
 export function isSelfAssessmentQuestionApplicable(
   question: SelfAssessmentQuestion,
   answers: SelfAssessmentAnswers,
 ) {
+  if (question.level === "SINGLE") return true;
   if (question.kind !== "ADDITIONAL") {
     return true;
   }
@@ -419,10 +454,11 @@ export function isSelfAssessmentGapAnswer(answer: string | undefined) {
 }
 
 export function isScoredSelfAssessmentQuestion(question: SelfAssessmentQuestion) {
-  return question.level === "L2" || question.kind === "ADDITIONAL";
+  return question.level === "SINGLE" || question.level === "L2" || question.kind === "ADDITIONAL";
 }
 
 export function answerOptionsForQuestion(question: SelfAssessmentQuestion) {
+  if (question.level === "SINGLE") return [...selfAssessmentControlAnswerValues];
   if (question.answerOptions?.length) {
     const closedOptions = isScoredSelfAssessmentQuestion(question)
       ? selfAssessmentL2AnswerValues
@@ -486,7 +522,7 @@ export function isSelfAssessmentGap(
   return (
     normalized === "GAP" ||
     normalized === "PARTIAL" ||
-    normalized === "UNKNOWN"
+    normalized === "UNKNOWN" || (normalized === "NOT_RELEVANT" && !isValidNotRelevant(answerState))
   );
 }
 
@@ -511,6 +547,10 @@ export function getSelfAssessmentValidationIssues(
         message: `${question.id}: jawaban wajib diisi.`,
       });
       continue;
+    }
+
+    if (!answerOptionsForQuestion(question).includes(answer)) {
+      issues.push({ questionId: question.id, message: `${question.reference}: pilih status yang tersedia.` });
     }
 
   }
