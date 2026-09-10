@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -39,6 +40,9 @@ import {
   type SelfAssessmentStatus,
 } from "@/lib/self-assessment";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/components/language-provider";
+
+const SelfAssessmentPpGuidance = dynamic(() => import("@/components/self-assessment-pp-guidance"));
 
 type Department = {
   id: string;
@@ -51,6 +55,7 @@ type SelfAssessmentWorkspacePayload = {
   title: string;
   departmentId: string | null;
   status: SelfAssessmentStatus;
+  ppGuidanceEnabled: boolean;
   answers: SelfAssessmentAnswers;
   actionPlan: SelfAssessmentActionPlanItem[];
 };
@@ -69,6 +74,10 @@ export function SelfAssessmentWorkspace({
   lockDepartment: boolean;
 }) {
   const router = useRouter();
+  const { locale } = useI18n();
+  const [ppGuidanceEnabled, setPpGuidanceEnabled] = useState(assessment.ppGuidanceEnabled ?? false);
+  const [isSavingGuidance, setIsSavingGuidance] = useState(false);
+  const [guidanceError, setGuidanceError] = useState("");
   const allowedKinds = useMemo(() => allowedKindsForRole(viewerRole), [viewerRole]);
   const [activeSection, setActiveSection] = useState<SectionKey>("questions");
   const [title, setTitle] = useState(assessment.title);
@@ -93,6 +102,24 @@ export function SelfAssessmentWorkspace({
       isSelfAssessmentQuestionApplicable(question, answers),
   );
   const questionsByArea = groupByArea(visibleQuestions);
+
+  async function togglePpGuidance(enabled: boolean) {
+    setGuidanceError("");
+    setIsSavingGuidance(true);
+    try {
+      const response = await fetch(`/api/self-assessments/${assessment.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ppGuidanceEnabled: enabled }),
+      });
+      if (!response.ok) throw new Error("Guidance preference could not be saved");
+      setPpGuidanceEnabled(enabled);
+    } catch {
+      setGuidanceError(locale === "en" ? "Could not save the guidance preference. Please try again." : "Pilihan panduan belum tersimpan. Silakan coba kembali.");
+    } finally {
+      setIsSavingGuidance(false);
+    }
+  }
 
   function updateAnswer(
     questionId: string,
@@ -357,6 +384,15 @@ export function SelfAssessmentWorkspace({
               </Badge>
             </div>
           </div>
+          <div className="mt-5 border-t border-slate-200 pt-4">
+            <label className="inline-flex cursor-pointer items-center gap-3 text-sm font-semibold text-slate-800">
+              <input type="checkbox" role="switch" checked={ppGuidanceEnabled} disabled={isSavingGuidance || isSaving}
+                onChange={(event) => void togglePpGuidance(event.target.checked)}
+                className="h-4 w-4 accent-teal-600" />
+              {locale === "en" ? "PP PDP guidance" : "Panduan PP PDP"}
+            </label>
+            {guidanceError ? <p role="alert" className="mt-2 text-sm text-rose-700">{guidanceError}</p> : null}
+          </div>
           {message ? (
             <p className="mt-4 text-sm font-semibold text-blue-700">{message}</p>
           ) : null}
@@ -411,6 +447,7 @@ export function SelfAssessmentWorkspace({
           {activeSection === "questions" ? (
             <Questionnaire
               questionsByArea={questionsByArea}
+              ppGuidanceEnabled={ppGuidanceEnabled}
               answers={answers}
               updateAnswer={updateAnswer}
               uploadEvidence={uploadEvidence}
@@ -500,6 +537,7 @@ function mergeGeneratedActionPlan(
 
 function Questionnaire({
   questionsByArea,
+  ppGuidanceEnabled,
   answers,
   updateAnswer,
   uploadEvidence,
@@ -507,6 +545,7 @@ function Questionnaire({
   uploadingQuestionId,
 }: {
   questionsByArea: Array<{ area: string; questions: typeof selfAssessmentQuestions }>;
+  ppGuidanceEnabled: boolean;
   answers: SelfAssessmentAnswers;
   updateAnswer: (
     questionId: string,
@@ -582,6 +621,8 @@ function Questionnaire({
                     <Badge tone="slate">{question.reference || "Referensi umum"}</Badge>
                   </div>
                 </div>
+
+                {ppGuidanceEnabled ? <SelfAssessmentPpGuidance question={question} /> : null}
 
                 <div
                   className={cn(

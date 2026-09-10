@@ -36,6 +36,7 @@ export default async function SelfAssessmentDetailPage({
         title: assessment.title,
         departmentId: assessment.departmentId,
         status: assessment.status,
+        ppGuidanceEnabled: assessment.ppGuidanceEnabled,
         answers: assessment.answers as SelfAssessmentAnswers,
         actionPlan: assessment.actionPlan as SelfAssessmentActionPlanItem[],
       }}

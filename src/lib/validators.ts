@@ -341,6 +341,7 @@ export const selfAssessmentCreateSchema = z.object({
 });
 
 export const selfAssessmentUpdateSchema = z.object({
+  ppGuidanceEnabled: z.boolean().optional(),
   title: z.string().trim().min(3, "judul minimal 3 karakter").optional(),
   departmentId: z.string().trim().min(1, "departemen wajib diisi").optional(),
   answers: selfAssessmentAnswersSchema.optional(),

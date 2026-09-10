@@ -26,7 +26,7 @@ try {
   const questions = JSON.parse(await readFile("src/lib/self-assessment-controller-questions.json", "utf8"));
   const resetAnswers = Object.fromEntries(questions.map((q) => [q.id, { answer: "", note: "", pic: "", priority: "", evidenceFiles: [] }]));
   resetAnswers["M01-01"] = { answer: "Ada", note: "Archived QA response", pic: "", priority: "", evidenceFiles: [] };
-  const reset = await context.request.patch(`/api/self-assessments/${id}`, { data: { answers: resetAnswers, status: "Draft" } });
+  const reset = await context.request.patch(`/api/self-assessments/${id}`, { data: { answers: resetAnswers, status: "Draft", ppGuidanceEnabled: false } });
   assert(reset.ok(), await reset.text());
   await page.reload({ waitUntil: "networkidle" });
   await page.getByRole("tab").first().waitFor();
@@ -37,12 +37,28 @@ try {
   assert.deepEqual(await select.locator("option").allTextContents(), ["Pilih jawaban", "Sudah Ada", "Dalam Proses", "Belum Ada", "Tidak Relevan"]);
   await select.selectOption("Sudah Ada");
   await control.locator("textarea").first().fill("Catatan pengujian penyimpanan.");
+  const guidanceSwitch = page.getByRole("switch", { name: /PP PDP/ });
+  assert(!(await guidanceSwitch.isChecked()), "PP guidance must start off");
+  assert.equal(await page.getByTestId("pp-guidance").count(), 0);
+  await guidanceSwitch.click();
+  await page.getByTestId("pp-guidance").first().waitFor();
+  assert(await guidanceSwitch.isChecked());
+  assert.equal(await select.inputValue(), "Sudah Ada", "Guidance must retain unsaved answers");
+  assert.equal(await control.locator("textarea").first().inputValue(), "Catatan pengujian penyimpanan.");
+  const firstGuidance = page.getByTestId("pp-guidance").first();
+  await firstGuidance.getByRole("button").click();
+  assert.equal(await firstGuidance.getByTestId("pp-article").count(), 6);
+  await firstGuidance.locator("summary").first().click();
+  assert((await firstGuidance.innerText()).includes("Pasal 61"));
+  assert.equal(await firstGuidance.locator("select,textarea,input").count(), 0, "PP guidance must contain no answer fields");
+  await page.screenshot({ path: "outputs/self-assessment-qa/pp-guidance.png", fullPage: false });
   await control.locator('input[type="file"]').first().setInputFiles({ name: "qa-evidence.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ1sAAAAASUVORK5CYII=", "base64") });
   await page.getByText("Bukti berhasil di-upload.", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Simpan", exact: true }).click();
   await page.getByText("Self assessment tersimpan.", { exact: true }).waitFor();
   await page.reload({ waitUntil: "networkidle" });
   assert.equal(await select.inputValue(), "Sudah Ada");
+  assert(await guidanceSwitch.isChecked(), "Guidance preference must survive reload");
   assert.equal(await control.locator("textarea").first().inputValue(), "Catatan pengujian penyimpanan.");
   await control.getByRole("button", { name: "qa-evidence.png" }).waitFor();
   await mkdir("outputs/self-assessment-qa", { recursive: true });
@@ -65,6 +81,17 @@ try {
   assert.equal(saved.answers["M01-01"].note, "Archived QA response");
   const finalize = await context.request.patch(`/api/self-assessments/${id}`, { data: { status: "Finalized" } });
   assert(finalize.ok(), await finalize.text());
+  const finalized = (await finalize.json()).data;
+  for (const ppGuidanceEnabled of [false, true]) {
+    const preference = await context.request.patch(`/api/self-assessments/${id}`, { data: { ppGuidanceEnabled } });
+    assert(preference.ok(), await preference.text());
+    const updated = (await preference.json()).data;
+    for (const key of ["answers", "actionPlan", "status", "finalizedAt", "finalizedBy", "updatedAt"]) assert.deepEqual(updated[key], finalized[key], `${key} changed by guidance preference`);
+  }
+  await page.reload({ waitUntil: "networkidle" });
+  await guidanceSwitch.click();
+  await page.waitForFunction(() => document.querySelector('[role="switch"]')?.checked === false);
+  assert.equal(await page.getByTestId("pp-guidance").count(), 0);
   const download = await context.request.get(`/api/self-assessments/${id}/export`);
   assert(download.ok());
   assert((await download.body()).subarray(0, 4).toString() === "%PDF");

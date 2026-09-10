@@ -374,6 +374,7 @@ export const selfAssessments = pgTable("self_assessments", {
   id: text("id").primaryKey(),
   assessmentNumber: text("assessment_number").notNull().unique(),
   title: text("title").notNull(),
+  ppGuidanceEnabled: boolean("pp_guidance_enabled").notNull().default(false),
   departmentId: text("department_id").references(() => departments.id, {
     onDelete: "set null",
   }),

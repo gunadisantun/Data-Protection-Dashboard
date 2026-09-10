@@ -3114,6 +3114,7 @@ export async function updateSelfAssessment(
   id: string,
   payload: {
     title?: string;
+    ppGuidanceEnabled?: boolean;
     departmentId?: string;
     answers?: SelfAssessmentAnswers;
     actionPlan?: SelfAssessmentActionPlanItem[];
@@ -3148,6 +3149,12 @@ export async function updateSelfAssessment(
     throw new Error("Forbidden department scope");
   }
 
+  // Guidance is a display preference, not an assessment scope or workflow change.
+  if (typeof payload.ppGuidanceEnabled === "boolean" && Object.keys(payload).every((key) => key === "ppGuidanceEnabled")) {
+    await db.update(selfAssessments).set({ ppGuidanceEnabled: payload.ppGuidanceEnabled }).where(eq(selfAssessments.id, id));
+    return getSelfAssessmentById(id, scope);
+  }
+
   const previousAnswers = existing.answers as SelfAssessmentAnswers;
   const answers = { ...previousAnswers, ...payload.answers };
   const actionPlan =
@@ -3171,6 +3178,7 @@ export async function updateSelfAssessment(
       ...(payload.title ? { title: payload.title } : {}),
       ...(departmentId ? { departmentId } : {}),
       answers,
+      ...(typeof payload.ppGuidanceEnabled === "boolean" ? { ppGuidanceEnabled: payload.ppGuidanceEnabled } : {}),
       actionPlan: [...archivedActions, ...actionPlan],
       dataMap,
       status: nextStatus,
