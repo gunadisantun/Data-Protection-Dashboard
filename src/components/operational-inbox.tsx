@@ -1,0 +1,20 @@
+import Link from "next/link";
+import { ArrowRight, ChevronLeft, ChevronRight, Inbox } from "lucide-react";
+import type { Locale } from "@/lib/i18n";
+import { inboxReasons, inboxSourceHref, type OperationalInboxData, type SearchValues } from "@/lib/operational-dashboard";
+
+export function OperationalInbox({ data, locale, filters }: { data: OperationalInboxData; locale: Locale; filters: SearchValues }) {
+  const en = locale === "en";
+  const labels = { all: en ? "All work" : "Semua pekerjaan", submitted: en ? "Submitted" : "Diajukan", revision: en ? "Revisions" : "Revisi", evidence: en ? "Evidence review" : "Review bukti", overdue: en ? "Overdue actions" : "Tindak lanjut terlambat", DPIA: "DPIA", TIA: "TIA", LIA: "LIA", ai: "AI Impact Assessment" };
+  const href = (reason: string, page = 1) => `/dashboard?${new URLSearchParams({ inbox: reason, inboxPage: String(page) })}#review-inbox`;
+  const reason = typeof filters.inbox === "string" && filters.inbox in labels ? filters.inbox : "all";
+  return <section id="review-inbox" className="space-y-4 border-y border-slate-200 py-5">
+    <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="flex items-center gap-2 text-xl font-bold"><Inbox className="h-5 w-5" />{en ? "Review & Follow-up Inbox" : "Antrean Review & Tindak Lanjut"}</h2><span className="text-sm text-slate-600">{data.filteredTotal} {en ? "records" : "data"}</span></div>
+    <nav aria-label={en ? "Review filters" : "Filter review"} className="flex flex-wrap gap-x-4 gap-y-2 text-sm">{inboxReasons.map((key) => <Link key={key} href={href(key)} aria-current={reason === key ? "page" : undefined} className={reason === key ? "border-b-2 border-blue-600 pb-1 font-semibold text-blue-700" : "pb-1 text-slate-600 hover:text-blue-700"}>{labels[key]}</Link>)}</nav>
+    <div className="overflow-x-auto"><table className="w-full min-w-[640px] table-fixed text-left text-sm"><thead className="bg-slate-100 text-slate-600"><tr><th className="w-[36%] p-3">{en ? "Record" : "Data"}</th><th className="w-[22%] p-3">{en ? "Business unit" : "Unit kerja"}</th><th className="w-[30%] p-3">{en ? "Attention required" : "Perlu tindak lanjut"}</th><th className="p-3"><span className="sr-only">{en ? "Open" : "Buka"}</span></th></tr></thead><tbody className="divide-y divide-slate-200">
+      {data.rows.map((row) => <tr key={`${row.source}:${row.id}`}><td className="break-words p-3"><Link className="font-semibold text-blue-700" href={inboxSourceHref(row)}>{row.title}</Link><p className="mt-1 text-xs text-slate-500">{row.taskType ?? row.reference}</p></td><td className="break-words p-3">{row.department ?? (en ? "Unassigned" : "Belum ditetapkan")}</td><td className="p-3"><div className="space-y-1">{row.submitted ? <p>{labels.submitted}</p> : null}{row.revision ? <p>{labels.revision}</p> : null}{row.pendingEvidence > 0 ? <p className="text-blue-700">{labels.evidence}: {row.pendingEvidence}</p> : null}{row.overdueActions > 0 ? <p className="font-semibold text-red-700">{labels.overdue}: {row.overdueActions}</p> : null}{!row.submitted && !row.revision && !row.pendingEvidence && !row.overdueActions ? <p>{en ? "In progress" : "Dalam proses"}</p> : null}</div></td><td className="p-3"><Link href={inboxSourceHref(row)} title={en ? "Open record" : "Buka data"} aria-label={en ? "Open record" : "Buka data"}><ArrowRight className="h-4 w-4" /></Link></td></tr>)}
+      {!data.rows.length ? <tr><td colSpan={4} className="p-6 text-center text-slate-500">{en ? "No items in this queue." : "Tidak ada pekerjaan dalam antrean ini."}</td></tr> : null}
+    </tbody></table></div>
+    <nav className="flex items-center justify-end gap-4 text-sm" aria-label={en ? "Inbox pages" : "Halaman antrean"}>{data.page > 1 ? <Link href={href(reason, data.page - 1)} aria-label={en ? "Previous page" : "Halaman sebelumnya"}><ChevronLeft className="h-5 w-5" /></Link> : null}<span>{data.page} / {data.pages}</span>{data.page < data.pages ? <Link href={href(reason, data.page + 1)} aria-label={en ? "Next page" : "Halaman berikutnya"}><ChevronRight className="h-5 w-5" /></Link> : null}</nav>
+  </section>;
+}

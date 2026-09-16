@@ -29,6 +29,7 @@ export default async function DpiaPage({ params }: DpiaPageProps) {
       assessmentId={assessment.id}
       draft={draft}
       initialStatus={assessment.status}
+      initialUpdatedAt={assessment.updatedAt}
       riskRegisterReferences={riskRegisterReferences}
       resultHref={`/ropa/${assessment.ropaId}/result`}
     />

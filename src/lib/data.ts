@@ -2,6 +2,8 @@ import { and, asc, count, desc, eq, inArray, like, or, sql } from "drizzle-orm";
 import { hashPassword } from "better-auth/crypto";
 import { db } from "@/db/client";
 import { ensureDatabase } from "@/db/init";
+import { requireEditable, requireVersion, mergeTrustedAnswers, ReviewConflict } from "@/lib/review-policy";
+import { captureFinalRevision } from "@/lib/self-assessment-snapshot";
 import {
   account,
   aiImpactAssessments,
@@ -10,6 +12,7 @@ import {
   auditEvents,
   breachReports,
   departments,
+  demoSessions,
   faqCategories,
   faqEntries,
   faqReferences,
@@ -48,6 +51,7 @@ import {
 import {
   isOfflineRuntime,
   readOfflineStorageObject,
+  deleteOfflineStorageObject,
   saveOfflineStorageObject,
 } from "@/lib/offline-runtime";
 import { analyzeRopa } from "@/lib/rule-engine";
@@ -74,6 +78,7 @@ import {
   hasCurrentSelfAssessmentAnswers,
   hasLegacySelfAssessmentAnswers,
   legacySelfAssessmentQuestions,
+  selfAssessmentQuestions,
   type SelfAssessmentActionPlanItem,
   type SelfAssessmentAnswers,
   type SelfAssessmentDataMapRow,
@@ -152,6 +157,7 @@ export async function createDemoSession(sessionId: string) {
   const now = new Date().toISOString();
   const userId = getDemoUserId(sessionId);
   const departmentId = getDemoDepartmentId(sessionId);
+  await db.insert(demoSessions).values({ id: sessionId, expiresAt: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString() }).onConflictDoNothing();
 
   await db
     .insert(departments)
@@ -195,6 +201,7 @@ export async function createDemoSession(sessionId: string) {
 
 export async function cleanupDemoSession(sessionId: string) {
   await ensureDatabase();
+  await db.delete(demoSessions).where(eq(demoSessions.id, sessionId));
   const userId = getDemoUserId(sessionId);
   const demoDepartmentPrefix = `demo-dept-${sessionId}-`;
 
@@ -888,10 +895,9 @@ export async function deleteManagedUser(id: string, scope?: AccessScope) {
   return true;
 }
 
-export async function listRopa(filters: RopaListFilters = {}, scope?: AccessScope) {
-  await ensureDatabase();
+function ropaListConditions(filters: RopaListFilters, scope?: AccessScope) {
   const scopedDepartment = departmentForScope(scope);
-  const conditions = [
+  return [
     isDemoScope(scope) ? eq(ropaActivities.userId, scope.userId) : undefined,
     scopedDepartment ? eq(ropaActivities.departmentId, scopedDepartment) : undefined,
     filters.department && filters.department !== "all"
@@ -904,6 +910,11 @@ export async function listRopa(filters: RopaListFilters = {}, scope?: AccessScop
       ? eq(ropaActivities.status, filters.status as "Draft" | "Active" | "Archived")
       : undefined,
   ].filter((condition) => Boolean(condition));
+}
+
+export async function listRopa(filters: RopaListFilters = {}, scope?: AccessScope, page?: number) {
+  await ensureDatabase();
+  const conditions = ropaListConditions(filters, scope);
 
   const rows = await db
     .select({
@@ -928,7 +939,9 @@ export async function listRopa(filters: RopaListFilters = {}, scope?: AccessScop
     .from(ropaActivities)
     .innerJoin(departments, eq(ropaActivities.departmentId, departments.id))
     .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(desc(ropaActivities.createdAt));
+    .orderBy(desc(ropaActivities.createdAt), ropaActivities.id)
+    .limit(page ? 50 : 2147483647)
+    .offset(page ? (page - 1) * 50 : 0);
 
   const obligations = rows.length
     ? await db
@@ -961,15 +974,23 @@ export async function listRopa(filters: RopaListFilters = {}, scope?: AccessScop
 }
 
 export async function listRopaForExport(filters: RopaListFilters = {}, scope?: AccessScope) {
-  const rows = await listRopa(filters, scope);
-  const activities = await Promise.all(rows.map((row) => getRopaById(row.id, scope)));
+  await ensureDatabase();
+  return db.query.ropaActivities.findMany({
+    where: and(...ropaListConditions(filters, scope)),
+    with: { department: true, assessments: true },
+    orderBy: [desc(ropaActivities.createdAt), ropaActivities.id],
+  });
+}
 
-  return activities.filter(
-    (
-      activity,
-    ): activity is NonNullable<Awaited<ReturnType<typeof getRopaById>>> =>
-      Boolean(activity),
-  );
+export async function getRopaRegistryPage(filters: RopaListFilters, requestedPage: number, scope: AccessScope) {
+  await ensureDatabase();
+  const distribution = await db.select({ id: departments.id, name: departments.name, count: count() }).from(ropaActivities)
+    .innerJoin(departments, eq(ropaActivities.departmentId, departments.id))
+    .where(and(...ropaListConditions(filters, scope))).groupBy(departments.id, departments.name);
+  const total = distribution.reduce((sum, row) => sum + row.count, 0);
+  const pages = Math.max(1, Math.ceil(total / 50));
+  const page = Math.min(pages, Math.max(1, Number.isSafeInteger(requestedPage) ? requestedPage : 1));
+  return { rows: await listRopa(filters, scope, page), total, pages, page, distribution };
 }
 
 export async function getRopaById(id: string, scope?: AccessScope) {
@@ -2740,6 +2761,7 @@ export async function createStandaloneAiImpactAssessment(
 export async function updateAiImpactAssessment(
   id: string,
   payload: Partial<{
+    expectedUpdatedAt: string;
     status: "Draft" | "In Progress" | "Completed" | "Archived";
     approvalStatus: string;
     ownerName: string;
@@ -2775,10 +2797,11 @@ export async function updateAiImpactAssessment(
     specialistAssessment: payload.specialistAssessment ?? existing.specialistAssessment,
   };
   const derived = buildAiImpactDerivedState(draft);
-  const updatedAt = new Date().toISOString();
+  if (payload.expectedUpdatedAt !== existing.updatedAt) throw new ReviewConflict("Assessment changed. Reload before saving.");
+  const updatedAt = new Date(Math.max(Date.now(), Date.parse(existing.updatedAt) + 1)).toISOString();
 
   await db.transaction(async (tx) => {
-    await tx
+    const [updated] = await tx
       .update(aiImpactAssessments)
       .set({
         ...(payload.status ? { status: payload.status } : {}),
@@ -2820,7 +2843,8 @@ export async function updateAiImpactAssessment(
         updatedBy: actorId,
         updatedAt,
       })
-      .where(eq(aiImpactAssessments.id, id));
+      .where(and(eq(aiImpactAssessments.id, id), eq(aiImpactAssessments.updatedAt, existing.updatedAt))).returning();
+    if (!updated) throw new ReviewConflict("Assessment changed. Reload before saving.");
 
     await tx.insert(auditEvents).values({
       id: `audit-${crypto.randomUUID()}`,
@@ -3025,7 +3049,7 @@ export async function getSelfAssessmentById(id: string, scope?: AccessScope) {
     return null;
   }
 
-  if (assessment.departmentId && !hasScopeAccess(scope, assessment.departmentId)) {
+  if (!hasScopeAccess(scope, assessment.departmentId ?? "")) {
     return null;
   }
 
@@ -3113,6 +3137,7 @@ export async function createSelfAssessment(
 export async function updateSelfAssessment(
   id: string,
   payload: {
+    expectedVersion?: number;
     title?: string;
     ppGuidanceEnabled?: boolean;
     departmentId?: string;
@@ -3149,14 +3174,20 @@ export async function updateSelfAssessment(
     throw new Error("Forbidden department scope");
   }
 
+  if (existing.departmentId && requestedDepartment !== existing.departmentId) {
+    throw new Error("Forbidden department scope: assessment revisions belong to the original unit");
+  }
   // Guidance is a display preference, not an assessment scope or workflow change.
   if (typeof payload.ppGuidanceEnabled === "boolean" && Object.keys(payload).every((key) => key === "ppGuidanceEnabled")) {
     await db.update(selfAssessments).set({ ppGuidanceEnabled: payload.ppGuidanceEnabled }).where(eq(selfAssessments.id, id));
     return getSelfAssessmentById(id, scope);
   }
 
+  requireEditable(existing.status);
+  requireVersion(existing.version, payload.expectedVersion);
+
   const previousAnswers = existing.answers as SelfAssessmentAnswers;
-  const answers = { ...previousAnswers, ...payload.answers };
+  const answers = mergeTrustedAnswers(previousAnswers, payload.answers);
   const actionPlan =
     payload.actionPlan ??
     generateSelfAssessmentActionPlan(answers, allowedKindsForRole(scope?.role ?? "User"));
@@ -3172,7 +3203,28 @@ export async function updateSelfAssessment(
   }
   const now = new Date().toISOString();
 
-  await db
+  for (const item of actionPlan) {
+    const previous = (existing.actionPlan as SelfAssessmentActionPlanItem[]).find((row) => row.id === item.id);
+    if (item.status === "Pending Review" && !item.completionEvidence?.trim()) {
+      throw new Error("Completion evidence is required before requesting closure review");
+    }
+    const closureFields = ["status", "followUp", "owner", "targetDate", "priority", "note", "completionEvidence"] as const;
+    if (previous?.status === "Done" && scope?.role === "User" && closureFields.some((key) => item[key] !== previous[key])) {
+      throw new Error("Only DPO or Master Admin can amend closed actions");
+    }
+    if (item.status === "Done" && previous?.status !== "Done") {
+      if (scope?.role === "User") throw new Error("Only DPO or Master Admin can close actions");
+      if (!item.completionEvidence?.trim()) throw new Error("Completion evidence is required to close an action");
+      item.closedBy = scope?.userId;
+      item.closedAt = now;
+    } else {
+      item.closedBy = previous?.closedBy;
+      item.closedAt = previous?.closedAt;
+    }
+  }
+
+  await db.transaction(async (tx) => {
+  const [updated] = await tx
     .update(selfAssessments)
     .set({
       ...(payload.title ? { title: payload.title } : {}),
@@ -3182,15 +3234,23 @@ export async function updateSelfAssessment(
       actionPlan: [...archivedActions, ...actionPlan],
       dataMap,
       status: nextStatus,
+      version: existing.version + 1,
       finalizedBy:
         nextStatus === "Finalized" ? (scope?.userId ?? existing.finalizedBy) : null,
       finalizedAt:
         nextStatus === "Finalized" ? now : null,
       updatedAt: now,
     })
-    .where(eq(selfAssessments.id, id));
+    .where(and(eq(selfAssessments.id, id), eq(selfAssessments.version, existing.version)))
+    .returning();
+  if (!updated) throw new ReviewConflict("Assessment changed. Reload before saving.");
 
-  await db.insert(auditEvents).values({
+  if (nextStatus === "Finalized") {
+    const [finalizer] = scope?.userId ? await tx.select().from(users).where(eq(users.id, scope.userId)).limit(1) : [];
+    await captureFinalRevision(tx, { ...existing, ...updated, answers, actionPlan: [...archivedActions, ...actionPlan], finalizer: finalizer ?? existing.finalizer });
+  }
+
+  await tx.insert(auditEvents).values({
     id: `audit-${crypto.randomUUID()}`,
     actorId: scope?.userId,
     eventType:
@@ -3204,6 +3264,7 @@ export async function updateSelfAssessment(
     message: `Self assessment ${existing.assessmentNumber} updated to ${nextStatus}.`,
     createdAt: now,
   });
+  });
 
   return getSelfAssessmentById(id, scope);
 }
@@ -3213,6 +3274,7 @@ export async function uploadSelfAssessmentEvidenceFile(
   questionId: string,
   file: File,
   scope?: AccessScope,
+  expectedVersion?: number,
 ) {
   await ensureDatabase();
   const assessment = await getSelfAssessmentById(assessmentId, scope);
@@ -3221,6 +3283,9 @@ export async function uploadSelfAssessmentEvidenceFile(
   }
 
   const bucket = getSelfAssessmentEvidenceBucketName();
+  requireEditable(assessment.status);
+  requireVersion(assessment.version, expectedVersion);
+  if (!selfAssessmentQuestions.some((question) => question.id === questionId)) throw new Error("Invalid control ID");
   const extension = file.name.split(".").pop()?.toLowerCase() ?? "bin";
   const storagePath = `self-assessment/${assessment.id}/${questionId}/${crypto.randomUUID()}.${extension}`;
   const payload = Buffer.from(await file.arrayBuffer());
@@ -3279,18 +3344,19 @@ export async function uploadSelfAssessmentEvidenceFile(
 
   answers[questionId] = {
     ...existingAnswer,
+    evidenceReview: undefined,
     evidenceFiles: [...(existingAnswer.evidenceFiles ?? []), evidence],
   };
 
-  await db
-    .update(selfAssessments)
-    .set({
-      answers,
-      updatedAt: new Date().toISOString(),
-    })
-    .where(eq(selfAssessments.id, assessment.id));
-
-  return evidence;
+  const [updated] = await db.update(selfAssessments).set({
+    answers, version: assessment.version + 1, updatedAt: new Date().toISOString(),
+  }).where(and(eq(selfAssessments.id, assessment.id), eq(selfAssessments.version, assessment.version))).returning();
+  if (!updated) {
+    if (isOfflineRuntime()) await deleteOfflineStorageObject(bucket, storagePath);
+    else await getSupabaseAdminClient().storage.from(bucket).remove([storagePath]);
+    throw new ReviewConflict("Assessment changed. Reload before uploading.");
+  }
+  return { ...evidence, assessmentVersion: updated.version };
 }
 
 export async function getSelfAssessmentEvidenceSignedUrl(
@@ -3393,7 +3459,7 @@ export async function getBreachReportById(id: string, scope?: AccessScope) {
     return null;
   }
 
-  if (report.departmentId && !hasScopeAccess(scope, report.departmentId)) {
+  if (!hasScopeAccess(scope, report.departmentId ?? "")) {
     return null;
   }
 
@@ -3462,6 +3528,7 @@ export async function createBreachReport(
 export async function updateBreachReport(
   id: string,
   payload: {
+    expectedUpdatedAt: string;
     title?: string;
     departmentId?: string;
     answers?: Record<string, string | string[]>;
@@ -3479,6 +3546,7 @@ export async function updateBreachReport(
   if (existing.status === "Finalized") {
     throw new Error("Finalized report cannot be edited");
   }
+  if (payload.expectedUpdatedAt !== existing.updatedAt) throw new ReviewConflict("Report changed. Reload before saving.");
 
   if (payload.status === "Finalized" && scope?.role !== "DPO") {
     throw new Error("Only DPO can finalize breach reports");
@@ -3499,10 +3567,10 @@ export async function updateBreachReport(
     throw new Error("Forbidden department scope");
   }
 
-  const now = new Date().toISOString();
+  const now = new Date(Math.max(Date.now(), Date.parse(existing.updatedAt) + 1)).toISOString();
   const nextStatus = payload.status ?? existing.status;
 
-  await db
+  const [updated] = await db
     .update(breachReports)
     .set({
       ...(payload.title ? { title: payload.title } : {}),
@@ -3517,7 +3585,8 @@ export async function updateBreachReport(
         nextStatus === "Finalized" ? (existing.finalizedAt ?? now) : existing.finalizedAt,
       updatedAt: now,
     })
-    .where(eq(breachReports.id, id));
+    .where(and(eq(breachReports.id, id), eq(breachReports.updatedAt, existing.updatedAt))).returning();
+  if (!updated) throw new ReviewConflict("Report changed. Reload before saving.");
 
   await db.insert(auditEvents).values({
     id: `audit-${crypto.randomUUID()}`,
@@ -3766,7 +3835,7 @@ export async function createRopa(payload: CreateRopaPayload, scope?: AccessScope
 
 export async function updateTask(
   id: string,
-  values: { status?: AssessmentStatus; notes?: string },
+  values: { status?: AssessmentStatus; notes?: string; expectedUpdatedAt: string },
   scope?: AccessScope,
 ) {
   await ensureDatabase();
@@ -3776,16 +3845,18 @@ export async function updateTask(
     return null;
   }
 
-  const updatedAt = new Date().toISOString();
+  if (values.expectedUpdatedAt !== existing.updatedAt) throw new ReviewConflict("Assessment changed. Reload before saving.");
+  const updatedAt = new Date(Math.max(Date.now(), Date.parse(existing.updatedAt) + 1)).toISOString();
 
-  await db
+  const [updated] = await db
     .update(assessments)
     .set({
       ...(values.status ? { status: values.status } : {}),
       ...(typeof values.notes === "string" ? { notes: values.notes } : {}),
       updatedAt,
     })
-    .where(eq(assessments.id, id));
+    .where(and(eq(assessments.id, id), eq(assessments.updatedAt, values.expectedUpdatedAt))).returning();
+  if (!updated) throw new ReviewConflict("Assessment changed. Reload before saving.");
 
   return db.query.assessments.findFirst({
     where: eq(assessments.id, id),

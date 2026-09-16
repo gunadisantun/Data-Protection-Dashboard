@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getViewerFromRequest, toAccessScope } from "@/lib/access";
 import { getSelfAssessmentById, updateSelfAssessment } from "@/lib/data";
 import { selfAssessmentUpdateSchema } from "@/lib/validators";
+import { ReviewConflict } from "@/lib/review-policy";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -45,6 +46,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
     return NextResponse.json({ data: assessment });
   } catch (error) {
+    if (error instanceof ReviewConflict) return NextResponse.json({ error: error.message }, { status: 409 });
     if (error instanceof Error && error.message.startsWith("Self assessment validation:")) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }

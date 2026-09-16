@@ -28,6 +28,7 @@ export default async function TiaPage({ params }: TiaPageProps) {
       assessmentId={assessment.id}
       draft={draft}
       initialStatus={assessment.status}
+      initialUpdatedAt={assessment.updatedAt}
       resultHref={`/ropa/${assessment.ropaId}/result`}
     />
   );

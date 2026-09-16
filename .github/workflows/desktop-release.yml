@@ -18,13 +18,18 @@ on:
         options:
           - "false"
           - "true"
+      signed:
+        description: "Require trusted code signing (disable only for an explicitly approved unsigned release)"
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: write
 
 jobs:
   build-windows:
-    name: Build signed Windows installer
+    name: Build Windows installer
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,11 +50,38 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test
+      - name: Require Windows signing certificate
+        if: github.event_name != 'workflow_dispatch' || inputs.signed
+        shell: pwsh
+        env:
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          if (-not $env:CSC_LINK -or -not $env:CSC_KEY_PASSWORD) { throw "Signed release requires Windows certificate secrets." }
       - run: npm run desktop:dist:win
+        if: github.event_name != 'workflow_dispatch' || inputs.signed
         env:
           CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
           CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.WIN_CSC_LINK && 'true' || 'false' }}
+          DESKTOP_SIGNED_RELEASE: "1"
+      - name: Build explicitly unsigned Windows installer
+        if: github.event_name == 'workflow_dispatch' && !inputs.signed
+        run: npm run desktop:prepare && npx electron-builder --win nsis --publish never --config.win.signExecutable=false
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - name: Smoke test packaged Windows app
+        shell: pwsh
+        run: node scripts/smoke-desktop.mjs "dist-electron/win-unpacked/Privacy Bro.exe" "dist-electron/win-unpacked/resources/app"
+      - name: Verify Windows signature
+        if: github.event_name != 'workflow_dispatch' || inputs.signed
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem dist-electron/*.exe)
+          if ($installers.Count -eq 0) { throw "No installer was produced." }
+          $installers | ForEach-Object {
+            if ((Get-AuthenticodeSignature -LiteralPath $_.FullName).Status -ne 'Valid') { throw "Installer signature is not valid." }
+          }
 
       - uses: actions/upload-artifact@v4
         with:
@@ -61,7 +93,7 @@ jobs:
           if-no-files-found: error
 
   build-macos:
-    name: Build signed macOS DMG
+    name: Build macOS DMG
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -82,7 +114,18 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test
+      - name: Require Apple signing and notarization credentials
+        if: github.event_name != 'workflow_dispatch' || inputs.signed
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          test -n "$CSC_LINK" && test -n "$CSC_KEY_PASSWORD" && test -n "$APPLE_ID" && test -n "$APPLE_APP_SPECIFIC_PASSWORD" && test -n "$APPLE_TEAM_ID"
       - run: npm run desktop:dist:mac
+        if: github.event_name != 'workflow_dispatch' || inputs.signed
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -90,6 +133,24 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          DESKTOP_SIGNED_RELEASE: "1"
+      - name: Build explicitly unsigned macOS DMG
+        if: github.event_name == 'workflow_dispatch' && !inputs.signed
+        run: npm run desktop:prepare && npx electron-builder --mac dmg --publish never --config.mac.identity=null
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - name: Smoke test packaged macOS app
+        run: |
+          app=$(find dist-electron -maxdepth 3 -name 'Privacy Bro.app' -print -quit)
+          test -n "$app"
+          node scripts/smoke-desktop.mjs "$app/Contents/MacOS/Privacy Bro" "$app/Contents/Resources/app"
+      - name: Verify macOS notarization
+        if: github.event_name != 'workflow_dispatch' || inputs.signed
+        run: |
+          app=$(find dist-electron -maxdepth 3 -name 'Privacy Bro.app' -print -quit)
+          test -n "$app"
+          codesign --verify --deep --strict "$app"
+          spctl --assess --type execute --verbose "$app"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -120,6 +181,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           DESKTOP_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
           PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || 'false' }}
+          SIGNED_RELEASE: ${{ github.event_name != 'workflow_dispatch' || inputs.signed }}
         run: |
           set -euo pipefail
           VERSION="${DESKTOP_VERSION#desktop-v}"
@@ -129,10 +191,16 @@ jobs:
             prerelease_flag="--prerelease"
           fi
 
-          notes="Signed desktop installers for Privacy Bro ${VERSION}.
+          signing_note="Signed and notarized desktop installers."
+          if [ "$SIGNED_RELEASE" != "true" ]; then
+            signing_note="Unsigned release, published with owner approval. Windows may show an unknown publisher / SmartScreen warning. The macOS build is not notarized and may be blocked by Gatekeeper."
+          fi
+          notes="Privacy Bro ${VERSION}. ${signing_note}
 
           Windows: download the .exe installer.
           macOS: download the .dmg installer.
+
+          Fixes local database startup on desktop. First launch requires creating a local Master Admin; demo access is disabled. Existing local data is preserved.
 
           Desktop mode runs locally with offline device storage."
 
@@ -141,6 +209,7 @@ jobs:
           else
             gh release create "$TAG" release-assets/* \
               --repo "$GH_REPO" \
+              --target "$GITHUB_SHA" \
               --title "Privacy Bro Desktop ${VERSION}" \
               --notes "$notes" \
               --latest \

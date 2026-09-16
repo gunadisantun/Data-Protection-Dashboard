@@ -181,6 +181,7 @@ export const createRopaSchema = z.object({
 });
 
 export const updateTaskSchema = z.object({
+  expectedUpdatedAt: z.string().min(1),
   status: z.enum(["Todo", "In Progress", "Done"]).optional(),
   notes: z.string().optional(),
 });
@@ -247,6 +248,7 @@ export const breachReportCreateSchema = z.object({
 });
 
 export const breachReportUpdateSchema = z.object({
+  expectedUpdatedAt: z.string().min(1),
   title: z.string().trim().min(3, "judul minimal 3 karakter").optional(),
   departmentId: z.string().trim().min(1, "departemen wajib diisi").optional(),
   answers: breachReportAnswersSchema.optional(),
@@ -313,6 +315,7 @@ const selfAssessmentActionPlanSchema = z.object({
   status: z.enum(selfAssessmentActionStatusValues),
   priority: z.enum(selfAssessmentPriorityValues),
   note: z.string().default(""),
+  completionEvidence: z.string().max(10000).optional(),
 });
 
 const selfAssessmentDataMapRowSchema = z.object({
@@ -341,6 +344,7 @@ export const selfAssessmentCreateSchema = z.object({
 });
 
 export const selfAssessmentUpdateSchema = z.object({
+  expectedVersion: z.number().int().nonnegative().optional(),
   ppGuidanceEnabled: z.boolean().optional(),
   title: z.string().trim().min(3, "judul minimal 3 karakter").optional(),
   departmentId: z.string().trim().min(1, "departemen wajib diisi").optional(),

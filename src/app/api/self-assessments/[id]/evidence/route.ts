@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getViewerFromRequest, toAccessScope } from "@/lib/access";
 import { uploadSelfAssessmentEvidenceFile } from "@/lib/data";
 import { validateSelfAssessmentEvidenceFile } from "@/lib/validators";
+import { ReviewConflict } from "@/lib/review-policy";
 
 export const runtime = "nodejs";
 
@@ -19,6 +20,8 @@ export async function POST(request: Request, context: RouteContext) {
   const formData = await request.formData();
   const questionId = String(formData.get("questionId") ?? "");
   const file = formData.get("file");
+  const versionValue = formData.get("expectedVersion");
+  const expectedVersion = versionValue === null ? undefined : Number(versionValue);
 
   if (!questionId) {
     return NextResponse.json({ error: "Question ID wajib diisi." }, { status: 400 });
@@ -39,6 +42,7 @@ export async function POST(request: Request, context: RouteContext) {
       questionId,
       file,
       toAccessScope(viewer),
+      expectedVersion,
     );
     if (!evidence) {
       return NextResponse.json({ error: "Self assessment tidak ditemukan." }, { status: 404 });
@@ -53,7 +57,7 @@ export async function POST(request: Request, context: RouteContext) {
             ? error.message
             : "Terjadi kesalahan saat upload bukti.",
       },
-      { status: 500 },
+      { status: error instanceof ReviewConflict ? 409 : 500 },
     );
   }
 }

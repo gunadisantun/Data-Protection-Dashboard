@@ -41,6 +41,8 @@ import {
 } from "@/lib/self-assessment";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/components/language-provider";
+import { AssessmentRevisionHistory, EvidenceReviewControl } from "@/components/self-assessment-review-controls";
+import { useUnsavedChanges } from "@/components/use-unsaved-changes";
 
 const SelfAssessmentPpGuidance = dynamic(() => import("@/components/self-assessment-pp-guidance"));
 
@@ -55,6 +57,8 @@ type SelfAssessmentWorkspacePayload = {
   title: string;
   departmentId: string | null;
   status: SelfAssessmentStatus;
+  version: number;
+  revision: number;
   ppGuidanceEnabled: boolean;
   answers: SelfAssessmentAnswers;
   actionPlan: SelfAssessmentActionPlanItem[];
@@ -81,6 +85,8 @@ export function SelfAssessmentWorkspace({
   const allowedKinds = useMemo(() => allowedKindsForRole(viewerRole), [viewerRole]);
   const [activeSection, setActiveSection] = useState<SectionKey>("questions");
   const [title, setTitle] = useState(assessment.title);
+  const [version, setVersion] = useState(assessment.version);
+  const [revision, setRevision] = useState(assessment.revision);
   const [departmentId, setDepartmentId] = useState(assessment.departmentId ?? "");
   const [answers, setAnswers] = useState<SelfAssessmentAnswers>(assessment.answers);
   const [actionPlan, setActionPlan] = useState<SelfAssessmentActionPlanItem[]>(
@@ -92,6 +98,11 @@ export function SelfAssessmentWorkspace({
   const [message, setMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [uploadingQuestionId, setUploadingQuestionId] = useState("");
+  const content = JSON.stringify({ title, departmentId, answers, actionPlan });
+  const [savedContent, setSavedContent] = useState(content);
+  const dirty = content !== savedContent;
+  const readOnly = status === "Finalized";
+  useUnsavedChanges(dirty && !readOnly, locale === "en" ? "Unsaved changes will be lost. Leave this page?" : "Perubahan belum tersimpan akan hilang. Tinggalkan halaman?");
   const summary = useMemo(
     () => calculateSelfAssessmentSummary(answers, allowedKinds),
     [answers, allowedKinds],
@@ -126,6 +137,7 @@ export function SelfAssessmentWorkspace({
     field: keyof SelfAssessmentAnswers[string],
     value: string,
   ) {
+    if (readOnly || isSaving) return;
     const emptyAnswer = {
       answer: "",
       note: "",
@@ -139,6 +151,7 @@ export function SelfAssessmentWorkspace({
       [questionId]: {
         ...emptyAnswer,
         ...current[questionId],
+        ...((field === "answer" || field === "note") && current[questionId]?.[field] !== value ? { evidenceReview: undefined } : {}),
         [field]: value,
       },
     }));
@@ -149,6 +162,7 @@ export function SelfAssessmentWorkspace({
     field: keyof SelfAssessmentActionPlanItem,
     value: string,
   ) {
+    if (readOnly || isSaving) return;
     setActionPlan((current) =>
       current.map((item) =>
         item.id === itemId ? { ...item, [field]: value } : item,
@@ -157,12 +171,15 @@ export function SelfAssessmentWorkspace({
   }
 
   async function uploadEvidence(questionId: string, file: File) {
+    if (readOnly || isSaving || uploadingQuestionId) return;
     setMessage("");
     setUploadingQuestionId(questionId);
     const formData = new FormData();
     formData.append("questionId", questionId);
     formData.append("file", file);
+    formData.append("expectedVersion", String(version));
 
+    try {
     const response = await fetch(`/api/self-assessments/${assessment.id}/evidence`, {
       method: "POST",
       body: formData,
@@ -175,13 +192,14 @@ export function SelfAssessmentWorkspace({
       return;
     }
 
-    const payload = (await response.json()) as { data?: SelfAssessmentEvidenceFile };
+    const payload = (await response.json()) as { data?: SelfAssessmentEvidenceFile & { assessmentVersion: number } };
     if (!payload.data) {
       setMessage("Gagal membaca hasil upload bukti.");
       return;
     }
 
     const uploadedEvidence = payload.data;
+    setVersion(uploadedEvidence.assessmentVersion);
     setAnswers((current) => {
       const existingAnswer = current[questionId] ?? {
         answer: "",
@@ -194,11 +212,15 @@ export function SelfAssessmentWorkspace({
         ...current,
         [questionId]: {
           ...existingAnswer,
+          evidenceReview: undefined,
           evidenceFiles: [...(existingAnswer.evidenceFiles ?? []), uploadedEvidence],
         },
       };
     });
     setMessage("Bukti berhasil di-upload.");
+    } catch {
+      setMessage(locale === "en" ? "Upload failed. Your answers are unchanged." : "Upload gagal. Jawaban Anda tetap tersimpan di form.");
+    } finally { setUploadingQuestionId(""); }
   }
 
   async function openEvidence(evidenceId: string) {
@@ -227,6 +249,7 @@ export function SelfAssessmentWorkspace({
     nextStatus: SelfAssessmentStatus = status,
     options: { downloadAfter?: boolean } = {},
   ) {
+    if (readOnly || isSaving || uploadingQuestionId) return;
     setMessage("");
     if (nextStatus !== "Draft") {
       const validationIssues = getSelfAssessmentValidationIssues(answers, allowedKinds);
@@ -241,6 +264,7 @@ export function SelfAssessmentWorkspace({
       }
     }
     setIsSaving(true);
+    try {
     const nextActionPlan = generateSelfAssessmentActionPlan(
       answers,
       allowedKinds,
@@ -250,6 +274,7 @@ export function SelfAssessmentWorkspace({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        expectedVersion: version,
         title,
         departmentId,
         answers,
@@ -258,36 +283,69 @@ export function SelfAssessmentWorkspace({
       }),
     });
 
-    setIsSaving(false);
     if (!response.ok) {
-      setMessage("Gagal menyimpan. Cek kembali field dan akses akun.");
+      setMessage(response.status === 409 ? (locale === "en" ? "This assessment changed elsewhere. Your changes remain here; reload only after preserving them." : "Asesmen berubah di sesi lain. Isian Anda masih di sini; periksa perubahan sebelum memuat ulang.") : (locale === "en" ? "Could not save. Please try again." : "Gagal menyimpan. Silakan coba kembali."));
       return;
     }
 
     const payload = (await response.json()) as {
       data?: {
         status: SelfAssessmentStatus;
+        version: number;
+        answers: SelfAssessmentAnswers;
         actionPlan: SelfAssessmentActionPlanItem[];
       };
     };
 
     if (payload.data) {
       setStatus(payload.data.status);
-      setActionPlan(payload.data.actionPlan.filter((item) => selfAssessmentQuestions.some((question) => question.id === item.questionId)));
+      const savedActions = payload.data.actionPlan.filter((item) => selfAssessmentQuestions.some((question) => question.id === item.questionId));
+      setActionPlan(savedActions);
+      setAnswers(payload.data.answers);
+      setVersion(payload.data.version);
+      setSavedContent(JSON.stringify({ title, departmentId, answers: payload.data.answers, actionPlan: savedActions }));
     }
 
     setMessage(
       nextStatus === "Finalized"
-        ? "Self assessment sudah difinalisasi."
+        ? (locale === "en" ? "Self assessment finalized." : "Self assessment sudah difinalisasi.")
         : nextStatus === "Submitted"
-          ? "Gap assessment sudah disubmit untuk review DPO. Full report sedang di-download."
-          : "Self assessment tersimpan.",
+          ? (locale === "en" ? "Assessment submitted for DPO review. Downloading the full report." : "Gap assessment sudah disubmit untuk review DPO. Full report sedang di-download.")
+          : (locale === "en" ? "Self assessment saved." : "Self assessment tersimpan."),
     );
     router.refresh();
 
     if (options.downloadAfter) {
       window.location.href = `/api/self-assessments/${assessment.id}/export`;
     }
+    } catch { setMessage(locale === "en" ? "Connection failed. Your changes remain in this form." : "Koneksi gagal. Isian Anda tetap ada di form ini."); }
+    finally { setIsSaving(false); }
+  }
+
+  async function revise() {
+    setIsSaving(true);
+    try {
+      const response = await fetch(`/api/self-assessments/${assessment.id}/revisions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedVersion: version }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error);
+      setStatus(payload.data.status); setRevision(payload.data.revision); setVersion(payload.data.version);
+      setMessage(locale === "en" ? "Revision created. The previous final version is retained." : "Revisi dibuat. Versi final sebelumnya tetap tersimpan.");
+    } catch { setMessage(locale === "en" ? "Could not create revision. Reload and try again." : "Revisi gagal dibuat. Muat ulang lalu coba lagi."); }
+    finally { setIsSaving(false); }
+  }
+
+  async function reviewEvidence(questionId: string, decision: { status: "Accepted" | "NeedsChanges"; strength: "Weak" | "Adequate" | "Strong"; note: string }) {
+    if (dirty || readOnly) return;
+    setIsSaving(true);
+    try {
+      const response = await fetch(`/api/self-assessments/${assessment.id}/evidence-review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ questionId, expectedVersion: version, ...decision }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error);
+      setAnswers(payload.data.answers); setVersion(payload.data.version);
+      setSavedContent(JSON.stringify({ title, departmentId, answers: payload.data.answers, actionPlan }));
+      setMessage(locale === "en" ? "Evidence review saved." : "Review bukti tersimpan.");
+    } catch { setMessage(locale === "en" ? "Review not saved. Check the latest version and try again." : "Review belum tersimpan. Periksa versi terbaru dan coba kembali."); }
+    finally { setIsSaving(false); }
   }
 
   return (
@@ -318,7 +376,7 @@ export function SelfAssessmentWorkspace({
               Download Full Report
             </Button>
           </Link>
-          <Button variant="secondary" onClick={() => void save("Draft")} disabled={isSaving}>
+          <Button variant="secondary" onClick={() => void save("Draft")} disabled={isSaving || readOnly || Boolean(uploadingQuestionId)}>
             <Save className="h-4 w-4" />
             Simpan
           </Button>
@@ -326,7 +384,7 @@ export function SelfAssessmentWorkspace({
             <Button
               variant="warning"
               onClick={() => void save("Submitted", { downloadAfter: true })}
-              disabled={isSaving}
+              disabled={isSaving || readOnly || Boolean(uploadingQuestionId)}
             >
               <Send className="h-4 w-4" />
               Submit
@@ -335,7 +393,7 @@ export function SelfAssessmentWorkspace({
             <Button
               variant="dark"
               onClick={() => void save("Finalized")}
-              disabled={isSaving}
+              disabled={isSaving || readOnly || Boolean(uploadingQuestionId)}
             >
               <ShieldCheck className="h-4 w-4" />
               Finalisasi
@@ -351,11 +409,11 @@ export function SelfAssessmentWorkspace({
               <Label help="Judul internal untuk snapshot self assessment unit ini.">
                 Judul Assessment
               </Label>
-              <Input value={title} onChange={(event) => setTitle(event.target.value)} />
+              <Input value={title} disabled={readOnly || isSaving} onChange={(event) => setTitle(event.target.value)} />
             </div>
             <div className="space-y-2">
               <Label help={defaultFieldHelp("Departemen")}>Departemen</Label>
-              {lockDepartment ? (
+              {lockDepartment || Boolean(assessment.departmentId) ? (
                 <Input
                   value={
                     departments.find((department) => department.id === departmentId)
@@ -365,6 +423,7 @@ export function SelfAssessmentWorkspace({
                 />
               ) : (
                 <Select
+                  disabled={readOnly || isSaving}
                   value={departmentId}
                   onChange={(event) => setDepartmentId(event.target.value)}
                 >
@@ -398,6 +457,8 @@ export function SelfAssessmentWorkspace({
           ) : null}
         </CardContent>
       </Card>
+
+      <AssessmentRevisionHistory id={assessment.id} revision={revision} finalized={readOnly} busy={isSaving} onRevise={() => void revise()} />
 
       <div className="grid gap-4 md:grid-cols-5">
         <MetricCard label="Kontrol Terjawab" value={`${summary.answered}/${summary.totalQuestions}`} />
@@ -448,6 +509,10 @@ export function SelfAssessmentWorkspace({
             <Questionnaire
               questionsByArea={questionsByArea}
               ppGuidanceEnabled={ppGuidanceEnabled}
+              readOnly={readOnly || isSaving}
+              canReview={viewerRole !== "User" && !readOnly}
+              reviewDisabled={dirty || isSaving || Boolean(uploadingQuestionId)}
+              reviewEvidence={reviewEvidence}
               answers={answers}
               updateAnswer={updateAnswer}
               uploadEvidence={uploadEvidence}
@@ -456,6 +521,8 @@ export function SelfAssessmentWorkspace({
             />
           ) : (
             <ActionPlanEditor
+              readOnly={readOnly || isSaving}
+              canClose={viewerRole !== "User"}
               items={actionPlan}
               onUpdate={updateActionPlan}
               onRegenerate={syncActionPlanFromAnswers}
@@ -531,6 +598,9 @@ function mergeGeneratedActionPlan(
       status: existing.status || item.status,
       priority: existing.priority || item.priority,
       note: existing.note || item.note,
+      completionEvidence: existing.completionEvidence,
+      closedBy: existing.closedBy,
+      closedAt: existing.closedAt,
     };
   });
 }
@@ -538,6 +608,7 @@ function mergeGeneratedActionPlan(
 function Questionnaire({
   questionsByArea,
   ppGuidanceEnabled,
+  readOnly, canReview, reviewDisabled, reviewEvidence,
   answers,
   updateAnswer,
   uploadEvidence,
@@ -546,6 +617,10 @@ function Questionnaire({
 }: {
   questionsByArea: Array<{ area: string; questions: typeof selfAssessmentQuestions }>;
   ppGuidanceEnabled: boolean;
+  readOnly: boolean;
+  canReview: boolean;
+  reviewDisabled: boolean;
+  reviewEvidence: (questionId: string, decision: { status: "Accepted" | "NeedsChanges"; strength: "Weak" | "Adequate" | "Strong"; note: string }) => Promise<void>;
   answers: SelfAssessmentAnswers;
   updateAnswer: (
     questionId: string,
@@ -560,9 +635,12 @@ function Questionnaire({
   const [controlPage, setControlPage] = useState(0);
   const selectedGroup = questionsByArea.find((group) => group.area === activeArea);
   const pageCount = Math.ceil((selectedGroup?.questions.length ?? 0) / 6);
+  const { locale } = useI18n();
+  const en = locale === "en";
+  const answerLabels: Record<string, string> = { "Sudah Ada": "Implemented", "Dalam Proses": "In Progress", "Belum Ada": "Not Implemented", "Tidak Relevan": "Not Applicable" };
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Bagian asesmen">
+      <div className="flex flex-wrap gap-2" role="tablist" aria-label={en ? "Assessment sections" : "Bagian asesmen"}>
         {questionsByArea.map((group) => (
           <button key={group.area} type="button" role="tab" aria-selected={activeArea === group.area}
             onClick={() => { setActiveArea(group.area); setControlPage(0); }}
@@ -575,9 +653,9 @@ function Questionnaire({
 
       {pageCount > 1 ? (
         <div className="flex items-center justify-between gap-3">
-          <Button variant="secondary" disabled={controlPage === 0} onClick={() => setControlPage((page) => page - 1)}>Sebelumnya</Button>
-          <span className="text-sm text-slate-600">Halaman {controlPage + 1} / {pageCount}</span>
-          <Button variant="secondary" disabled={controlPage >= pageCount - 1} onClick={() => setControlPage((page) => page + 1)}>Berikutnya</Button>
+          <Button variant="secondary" disabled={controlPage === 0} onClick={() => setControlPage((page) => page - 1)}>{en ? "Previous" : "Sebelumnya"}</Button>
+          <span className="text-sm text-slate-600">{en ? "Page" : "Halaman"} {controlPage + 1} / {pageCount}</span>
+          <Button variant="secondary" disabled={controlPage >= pageCount - 1} onClick={() => setControlPage((page) => page + 1)}>{en ? "Next" : "Berikutnya"}</Button>
         </div>
       ) : null}
 
@@ -585,7 +663,7 @@ function Questionnaire({
         <section key={group.area} className="space-y-3">
           <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3">
             <h2 className="font-bold text-slate-950">{group.area}</h2>
-            <Badge tone="blue">{group.questions.length} pertanyaan</Badge>
+            <Badge tone="blue">{group.questions.length} {en ? "questions" : "pertanyaan"}</Badge>
           </div>
           {group.questions.slice(controlPage * 6, (controlPage + 1) * 6).map((question) => {
             const answer = answers[question.id] ?? {
@@ -603,17 +681,17 @@ function Questionnaire({
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0 flex-1 space-y-2">
                     <p className="text-xs font-bold uppercase tracking-[0.12em] text-blue-600">
-                      Kontrol {question.number} - {question.reference}
+                      {en ? "Control" : "Kontrol"} {question.number} - {question.reference}
                     </p>
                     <h3 className="text-base font-bold leading-6 text-slate-950">
                       {question.question}
                     </h3>
                     <p className="text-sm leading-6 text-slate-600">
-                      <span className="font-semibold text-slate-800">Tujuan:</span>{" "}
+                      <span className="font-semibold text-slate-800">{en ? "Objective:" : "Tujuan:"}</span>{" "}
                       {question.objective || "-"}
                     </p>
                     <details className="text-sm leading-6 text-slate-600">
-                      <summary className="cursor-pointer font-semibold">Isi pasal</summary>
+                      <summary className="cursor-pointer font-semibold">{en ? "Article text" : "Isi pasal"}</summary>
                       <p className="mt-2 whitespace-pre-wrap">{question.articleText}</p>
                     </details>
                   </div>
@@ -633,25 +711,27 @@ function Questionnaire({
                   )}
                 >
                   <div className="space-y-2">
-                    <Label help="Sudah Ada: kontrol dilaksanakan. Dalam Proses: sedang disiapkan atau belum lengkap. Belum Ada: belum dilaksanakan. Tidak Relevan: tidak berlaku pada proses yang dinilai.">
-                      Status Kontrol
+                    <Label help={en ? "Implemented: the control operates. In Progress: preparation or implementation is incomplete. Not Implemented: the control is not operating. Not Applicable: the control does not apply to the assessed process." : "Sudah Ada: kontrol dilaksanakan. Dalam Proses: sedang disiapkan atau belum lengkap. Belum Ada: belum dilaksanakan. Tidak Relevan: tidak berlaku pada proses yang dinilai."}>
+                      {en ? "Control status" : "Status Kontrol"}
                     </Label>
                     <Select
+                      disabled={readOnly}
                       value={answer.answer}
                       onChange={(event) =>
                         updateAnswer(question.id, "answer", event.target.value)
                       }
                     >
-                      <option value="">Pilih jawaban</option>
+                      <option value="">{en ? "Select answer" : "Pilih jawaban"}</option>
                       {answerOptionsForQuestion(question).map((value) => (
                         <option key={value} value={value}>
-                          {value}
+                          {en ? answerLabels[value] ?? value : value}
                         </option>
                       ))}
                     </Select>
                   </div>
                   {isScoredSelfAssessmentQuestion(question) ? (
                     <EvidenceUploader
+                      readOnly={readOnly}
                       question={question}
                       questionId={question.id}
                       evidenceRequirement={question.evidence}
@@ -664,22 +744,25 @@ function Questionnaire({
                   ) : null}
                 </div>
 
+                <EvidenceReviewControl answer={answer} canReview={canReview} disabled={reviewDisabled} onReview={(decision) => reviewEvidence(question.id, decision)} />
+
                 {isScoredSelfAssessmentQuestion(question) ? (
                   <div className="mt-4">
                     <div className="space-y-2">
-                      <Label help={buildNoteHelp(question, answer.answer)}>
-                        Keterangan / Bukti Pelaksanaan (Opsional)
+                      <Label help={en ? "Describe the assessed process, any gaps, and supporting references. A specific reason is needed to exclude an inapplicable control from scoring." : buildNoteHelp(question, answer.answer)}>
+                        {en ? "Notes / Implementation Evidence (Optional)" : "Keterangan / Bukti Pelaksanaan (Opsional)"}
                       </Label>
                       <Textarea
+                        disabled={readOnly}
                         value={answer.note}
                         onChange={(event) => updateAnswer(question.id, "note", event.target.value)}
                         className="min-h-28"
-                        placeholder="Jelaskan gap, penyebab, proses terdampak, dan rencana tindak lanjut bila diketahui..."
+                        placeholder={en ? "Describe any gap, cause, affected process, and known follow-up plan..." : "Jelaskan gap, penyebab, proses terdampak, dan rencana tindak lanjut bila diketahui..."}
                       />
                     </div>
                     <div className="mt-4 space-y-2">
-                      <Label help="Nama penanggung jawab atau narahubung untuk kontrol ini.">Penanggung Jawab / CP (Opsional)</Label>
-                      <Input value={answer.pic} onChange={(event) => updateAnswer(question.id, "pic", event.target.value)} placeholder="Nama penanggung jawab" />
+                      <Label help={en ? "The person responsible for this control." : "Nama penanggung jawab atau narahubung untuk kontrol ini."}>{en ? "Control Owner / Contact (Optional)" : "Penanggung Jawab / CP (Opsional)"}</Label>
+                      <Input disabled={readOnly} value={answer.pic} onChange={(event) => updateAnswer(question.id, "pic", event.target.value)} placeholder={en ? "Owner name" : "Nama penanggung jawab"} />
                     </div>
                   </div>
                 ) : null}
@@ -693,6 +776,7 @@ function Questionnaire({
 }
 
 function EvidenceUploader({
+  readOnly,
   question,
   questionId,
   evidenceRequirement,
@@ -702,6 +786,7 @@ function EvidenceUploader({
   onUpload,
   onOpen,
 }: {
+  readOnly: boolean;
   question: (typeof selfAssessmentQuestions)[number];
   questionId: string;
   evidenceRequirement: string;
@@ -740,7 +825,7 @@ function EvidenceUploader({
           <input
             type="file"
             className="sr-only"
-            disabled={isUploading}
+            disabled={isUploading || readOnly}
             accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.png,.jpg,.jpeg"
             onChange={(event) => {
               const file = event.target.files?.[0];
@@ -802,10 +887,13 @@ function sanitizeAssessmentHelp(value?: string) {
 }
 
 function ActionPlanEditor({
+  readOnly, canClose,
   items,
   onUpdate,
   onRegenerate,
 }: {
+  readOnly: boolean;
+  canClose: boolean;
   items: SelfAssessmentActionPlanItem[];
   onUpdate: (
     itemId: string,
@@ -815,7 +903,7 @@ function ActionPlanEditor({
   onRegenerate: () => void;
 }) {
   return (
-    <div className="space-y-4">
+    <fieldset disabled={readOnly} className="min-w-0 space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-bold text-slate-950">Action Plan</h2>
@@ -855,6 +943,7 @@ function ActionPlanEditor({
                   onChange={(event) => onUpdate(item.id, "followUp", event.target.value)}
                   className="min-h-24"
                 />
+                <Textarea aria-label="Completion evidence" placeholder="Completion evidence / Bukti penyelesaian" value={item.completionEvidence ?? ""} onChange={(event) => onUpdate(item.id, "completionEvidence", event.target.value)} className="mt-2 min-h-20" />
               </TD>
               <TD className="min-w-[180px]">
                 <Input
@@ -874,7 +963,7 @@ function ActionPlanEditor({
                   value={item.status}
                   onChange={(event) => onUpdate(item.id, "status", event.target.value)}
                 >
-                  {selfAssessmentActionStatusValues.map((value) => (
+                  {selfAssessmentActionStatusValues.filter((value) => canClose || value !== "Done" || item.status === "Done").map((value) => (
                     <option key={value} value={value}>
                       {value}
                     </option>
@@ -905,7 +994,7 @@ function ActionPlanEditor({
           ) : null}
         </TBody>
       </Table>
-    </div>
+    </fieldset>
   );
 }
 

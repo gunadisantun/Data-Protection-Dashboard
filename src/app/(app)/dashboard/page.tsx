@@ -25,17 +25,20 @@ import { getDashboardSummary } from "@/lib/data";
 import { getCurrentLocale } from "@/lib/i18n-server";
 import { translate, type Locale, type TranslationKey } from "@/lib/i18n";
 import { formatDate } from "@/lib/utils";
+import { OperationalInbox } from "@/components/operational-inbox";
+import { operationalInboxQuery, readOperationalQuery, type OperationalInboxData, type SearchValues } from "@/lib/operational-dashboard";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<SearchValues> }) {
   const locale = await getCurrentLocale();
+  const filters = await searchParams;
 
   return (
     <div className="mx-auto max-w-[1180px] space-y-6">
       <DashboardHeader locale={locale} />
       <Suspense fallback={<DashboardSkeleton />}>
-        <DashboardContent locale={locale} />
+        <DashboardContent locale={locale} filters={filters} />
       </Suspense>
     </div>
   );
@@ -64,14 +67,15 @@ function DashboardHeader({ locale }: { locale: Locale }) {
   );
 }
 
-async function DashboardContent({ locale }: { locale: Locale }) {
+async function DashboardContent({ locale, filters }: { locale: Locale; filters: SearchValues }) {
   const t = createT(locale);
   const viewer = await requireViewer();
   const summary = await getDashboardSummary(toAccessScope(viewer));
+  const inbox = await readOperationalQuery<OperationalInboxData>(operationalInboxQuery(toAccessScope(viewer), filters));
 
   return (
     <>
-
+      <OperationalInbox data={inbox} locale={locale} filters={filters} />
       <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-6">
         <MetricCard
           icon={<FileText className="h-5 w-5" />}

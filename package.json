@@ -111,8 +111,8 @@
         "nsis"
       ],
       "artifactName": "Privacy-Bro-Setup-${version}.${ext}",
-      "signAndEditExecutable": false,
-      "signExecutable": false
+      "signAndEditExecutable": true,
+      "signExecutable": true
     },
     "nsis": {
       "oneClick": false,
@@ -125,8 +125,7 @@
         "dmg"
       ],
       "category": "public.app-category.business",
-      "identity": null,
-      "hardenedRuntime": false,
+      "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",

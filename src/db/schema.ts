@@ -1,4 +1,5 @@
 import { relations } from "drizzle-orm";
+import type { SelfAssessmentAnswers, SelfAssessmentActionPlanItem } from "@/lib/self-assessment";
 import {
   boolean,
   integer,
@@ -375,6 +376,8 @@ export const selfAssessments = pgTable("self_assessments", {
   assessmentNumber: text("assessment_number").notNull().unique(),
   title: text("title").notNull(),
   ppGuidanceEnabled: boolean("pp_guidance_enabled").notNull().default(false),
+  version: integer("version").notNull().default(0),
+  revision: integer("revision").notNull().default(1),
   departmentId: text("department_id").references(() => departments.id, {
     onDelete: "set null",
   }),
@@ -382,44 +385,10 @@ export const selfAssessments = pgTable("self_assessments", {
     .notNull()
     .default("Draft"),
   answers: jsonb("answers")
-    .$type<
-      Record<
-        string,
-        {
-          answer: string;
-          note: string;
-          pic: string;
-          priority: string;
-          evidenceFiles?: Array<{
-            id: string;
-            fileName: string;
-            mimeType: string;
-            fileSize: number;
-            storageBucket: string;
-            storagePath: string;
-            uploadedAt: string;
-            uploadedBy?: string | null;
-          }>;
-        }
-      >
-    >()
+    .$type<SelfAssessmentAnswers>()
     .notNull(),
   actionPlan: jsonb("action_plan")
-    .$type<
-      Array<{
-        id: string;
-        source: string;
-        questionId: string;
-        finding: string;
-        practicalRisk: string;
-        followUp: string;
-        owner: string;
-        targetDate: string;
-        status: string;
-        priority: string;
-        note: string;
-      }>
-    >()
+    .$type<SelfAssessmentActionPlanItem[]>()
     .notNull(),
   dataMap: jsonb("data_map")
     .$type<
@@ -454,6 +423,20 @@ export const selfAssessments = pgTable("self_assessments", {
   finalizedAt: text("finalized_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
+});
+
+export const demoSessions = pgTable("demo_sessions", {
+  id: text("id").primaryKey(),
+  expiresAt: text("expires_at").notNull(),
+});
+
+export const selfAssessmentRevisions = pgTable("self_assessment_revisions", {
+  id: text("id").primaryKey(),
+  assessmentId: text("assessment_id").notNull().references(() => selfAssessments.id, { onDelete: "cascade" }),
+  revision: integer("revision").notNull(),
+  snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull(),
+  pdfBase64: text("pdf_base64").notNull(),
+  finalizedAt: text("finalized_at").notNull(),
 });
 
 export const faqCategories = pgTable("faq_categories", {

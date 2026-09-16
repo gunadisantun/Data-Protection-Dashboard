@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ReviewConflict } from "@/lib/review-policy";
 import { getViewerFromRequest, toAccessScope } from "@/lib/access";
 import {
   deleteAiImpactAssessment,
@@ -44,6 +45,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
   }
 
+  try {
   const assessment = await updateAiImpactAssessment(
     id,
     payload,
@@ -56,6 +58,10 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   return NextResponse.json({ data: assessment });
+  } catch (error) {
+    if (error instanceof ReviewConflict) return NextResponse.json({ error: error.message }, { status: 409 });
+    return NextResponse.json({ error: "Could not save assessment" }, { status: 400 });
+  }
 }
 
 export async function DELETE(request: Request, context: RouteContext) {

@@ -12,7 +12,8 @@ import {
   Save,
   ShieldCheck,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useRef } from "react";
+import { formSaveError, savedUpdatedAt, unsavedChangesMessage, useUnsavedChanges } from "@/components/use-unsaved-changes";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,6 +39,7 @@ type TiaWorkspaceProps = {
   assessmentId: string;
   resultHref: string;
   initialStatus: AssessmentStatus;
+  initialUpdatedAt: string;
 };
 
 type SaveState = "idle" | "saving" | "saved" | "error";
@@ -85,38 +87,58 @@ export function TiaWorkspace({
   assessmentId,
   resultHref,
   initialStatus,
+  initialUpdatedAt,
 }: TiaWorkspaceProps) {
   const { locale } = useI18n();
   const text = tiaWorkspaceText[locale];
   const [tiaDraft, setTiaDraft] = useState(() => recalculateTiaDraft(draft));
   const [status, setStatus] = useState(initialStatus);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [saveError, setSaveError] = useState("");
+  const [savedSnapshot, setSavedSnapshot] = useState(() => JSON.stringify(tiaDraft));
+  const expectedUpdatedAt = useRef(initialUpdatedAt);
+  const saving = useRef(false);
+  useUnsavedChanges(JSON.stringify(tiaDraft) !== savedSnapshot, unsavedChangesMessage(locale));
   const [canEditCountryReference, setCanEditCountryReference] = useState(false);
   const [canEditRisks, setCanEditRisks] = useState(false);
   const [canEditEvaluation, setCanEditEvaluation] = useState(false);
 
   async function saveDraft(nextStatus: AssessmentStatus) {
+    if (saving.current) return false;
+    saving.current = true;
     setSaveState("saving");
-
+    setSaveError("");
+    try {
+    const snapshot = JSON.stringify(tiaDraft);
     const response = await fetch(`/api/tasks/${assessmentId}`, {
+      signal: AbortSignal.timeout(30000),
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         status: nextStatus,
+        expectedUpdatedAt: expectedUpdatedAt.current,
         notes: serializeTiaDraftNotes(tiaDraft),
       }),
     });
 
     if (!response.ok) {
+      setSaveError(formSaveError(locale, response.status));
       setSaveState("error");
       return false;
     }
 
+    expectedUpdatedAt.current = savedUpdatedAt(await response.json()) ?? expectedUpdatedAt.current;
+    setSavedSnapshot(snapshot);
     setStatus(nextStatus);
     setSaveState("saved");
     return true;
+    } catch {
+      setSaveError(formSaveError(locale));
+      setSaveState("error");
+      return false;
+    } finally { saving.current = false; }
   }
 
   async function exportExcel() {
@@ -280,9 +302,9 @@ export function TiaWorkspace({
           )}
         >
           {saveState === "saved"
-            ? "Draft TIA tersimpan."
+            ? (locale === "en" ? "TIA draft saved." : "Draft TIA tersimpan.")
             : saveState === "error"
-              ? "Draft TIA gagal disimpan."
+              ? saveError
               : text.savingTia}
         </div>
       ) : null}

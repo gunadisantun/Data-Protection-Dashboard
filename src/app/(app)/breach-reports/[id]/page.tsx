@@ -38,6 +38,7 @@ export default async function BreachReportDetailPage({
         title: report.title,
         departmentId: report.departmentId,
         status: report.status,
+        updatedAt: report.updatedAt,
         answers: report.answers,
       }}
       departments={departments}

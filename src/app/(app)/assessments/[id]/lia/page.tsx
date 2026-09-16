@@ -27,6 +27,7 @@ export default async function LiaPage({ params }: LiaPageProps) {
       assessmentId={assessment.id}
       draft={draft}
       initialStatus={assessment.status}
+      initialUpdatedAt={assessment.updatedAt}
       resultHref={`/ropa/${assessment.ropaId}/result`}
     />
   );

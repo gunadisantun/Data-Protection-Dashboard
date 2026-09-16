@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getViewerFromRequest, toAccessScope } from "@/lib/access";
 import { getSelfAssessmentById } from "@/lib/data";
 import { generateSelfAssessmentPdf } from "@/lib/self-assessment-pdf";
+import { getFinalRevision } from "@/lib/self-assessment-review";
 import type {
   SelfAssessmentActionPlanItem,
   SelfAssessmentAnswers,
@@ -23,7 +24,12 @@ export async function GET(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const bytes = await generateSelfAssessmentPdf({
+  const requestedRevision = new URL(request.url).searchParams.get("revision");
+  const revision = requestedRevision ? Number(requestedRevision) : assessment.status === "Finalized" ? assessment.revision : null;
+  if (revision !== null && (!Number.isInteger(revision) || revision < 1)) return NextResponse.json({ error: "Invalid revision" }, { status: 400 });
+  const snapshot = revision !== null ? await getFinalRevision(id, revision, toAccessScope(viewer)) : null;
+  if (revision !== null && !snapshot) return NextResponse.json({ error: "Revision not found" }, { status: 404 });
+  const bytes = snapshot ? Buffer.from(snapshot.pdfBase64, "base64") : await generateSelfAssessmentPdf({
     ...assessment,
     answers: assessment.answers as SelfAssessmentAnswers,
     actionPlan: assessment.actionPlan as SelfAssessmentActionPlanItem[],

@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { getDemoDepartmentId, getDemoUserId } from "@/lib/demo";
 import { isOfflineRuntime } from "@/lib/offline-runtime";
 import type { AccessScope } from "@/lib/data";
+import { validDemoSession } from "@/lib/demo-session";
 
 export const demoSessionCookieName = "privacy_bro_demo_session";
 
@@ -62,13 +63,13 @@ function mapSessionToViewer(session: SessionShape | null): Viewer | null {
 
 export const getViewer = cache(async () => {
   const demoSessionId = (await cookies()).get(demoSessionCookieName)?.value;
-  if (demoSessionId && !isOfflineRuntime()) {
+  if (!isOfflineRuntime() && await validDemoSession(demoSessionId)) {
     return {
-      id: getDemoUserId(demoSessionId),
+      id: getDemoUserId(demoSessionId!),
       name: "Demo User",
       email: `demo-${demoSessionId}@privacybro.local`,
       role: "User",
-      departmentId: getDemoDepartmentId(demoSessionId),
+      departmentId: getDemoDepartmentId(demoSessionId!),
       isDemo: true,
       demoSessionId,
     } satisfies Viewer;
@@ -93,15 +94,15 @@ export async function requireViewer() {
 
 export async function getViewerFromRequest(request: Request) {
   const demoSessionId = getCookieFromRequest(request, demoSessionCookieName);
-  if (demoSessionId && !isOfflineRuntime()) {
+  if (!isOfflineRuntime() && await validDemoSession(demoSessionId)) {
     return {
-      id: getDemoUserId(demoSessionId),
+      id: getDemoUserId(demoSessionId!),
       name: "Demo User",
       email: `demo-${demoSessionId}@privacybro.local`,
       role: "User",
-      departmentId: getDemoDepartmentId(demoSessionId),
+      departmentId: getDemoDepartmentId(demoSessionId!),
       isDemo: true,
-      demoSessionId,
+      demoSessionId: demoSessionId ?? undefined,
     } satisfies Viewer;
   }
 
@@ -131,7 +132,8 @@ function getCookieFromRequest(request: Request, name: string) {
   const cookiesList = cookieHeader.split(";").map((item) => item.trim());
   const prefix = `${name}=`;
   const cookie = cookiesList.find((item) => item.startsWith(prefix));
-  return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : null;
+  try { return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : null; }
+  catch { return null; }
 }
 
 export function isMasterAdmin(viewer: Pick<Viewer, "role">) {

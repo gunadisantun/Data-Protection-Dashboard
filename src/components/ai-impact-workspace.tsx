@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, BrainCircuit, ExternalLink, Plus, Save } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
+import { formSaveError, savedUpdatedAt, unsavedChangesMessage, useUnsavedChanges } from "@/components/use-unsaved-changes";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -153,6 +154,10 @@ export function AiImpactWorkspace({
     specialistAssessment: assessment.specialistAssessment,
   }));
   const [isSaving, setIsSaving] = useState(false);
+  const [savedSnapshot, setSavedSnapshot] = useState(() => JSON.stringify(form));
+  const expectedUpdatedAt = useRef(assessment.updatedAt);
+  const saving = useRef(false);
+  useUnsavedChanges(JSON.stringify(form) !== savedSnapshot, unsavedChangesMessage(locale));
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState<
     "context" | "links" | "impact" | "fria" | "data-protection"
@@ -169,21 +174,30 @@ export function AiImpactWorkspace({
   );
 
   async function save() {
+    if (saving.current) return;
+    saving.current = true;
     setIsSaving(true);
     setMessage("");
+    try {
+    const snapshot = JSON.stringify(form);
     const response = await fetch(`/api/ai-impact/${assessment.id}`, {
+      signal: AbortSignal.timeout(30000),
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    }).catch(() => null);
+      body: JSON.stringify({ ...form, expectedUpdatedAt: expectedUpdatedAt.current }),
+    });
 
     setIsSaving(false);
     if (!response?.ok) {
-      setMessage(t.saveFailed);
+      setMessage(formSaveError(locale, response?.status));
       return;
     }
+    expectedUpdatedAt.current = savedUpdatedAt(await response.json()) ?? expectedUpdatedAt.current;
+    setSavedSnapshot(snapshot);
     setMessage(t.saved);
     router.refresh();
+    } catch { setMessage(formSaveError(locale)); }
+    finally { saving.current = false; setIsSaving(false); }
   }
 
   async function createSupporting(type: AssessmentType) {

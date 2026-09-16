@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 
 export function isOfflineRuntime() {
@@ -47,4 +47,8 @@ export async function saveOfflineStorageObject(
 
 export async function readOfflineStorageObject(bucket: string, storagePath: string) {
   return readFile(resolveOfflineStoragePath(bucket, storagePath));
+}
+
+export async function deleteOfflineStorageObject(bucket: string, storagePath: string) {
+  await unlink(resolveOfflineStoragePath(bucket, storagePath));
 }

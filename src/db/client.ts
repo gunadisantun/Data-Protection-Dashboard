@@ -22,14 +22,14 @@ const globalForDb = globalThis as typeof globalThis & {
 
 export const queryClient =
   offlineRuntime
-    ? (globalForDb.privacyBroPglite ?? new PGlite(ensureOfflineDatabaseDir()))
+    ? (globalForDb.privacyBroPglite ?? new PGlite(process.env.NEXT_PHASE === "phase-production-build" ? "memory://" : ensureOfflineDatabaseDir()))
     : (globalForDb.privacyVaultSql ??
       postgres(connectionString!, {
         prepare: false,
         ssl: "require",
       }));
 
-if (process.env.NODE_ENV !== "production") {
+if (offlineRuntime || process.env.NODE_ENV !== "production") {
   if (offlineRuntime) {
     globalForDb.privacyBroPglite = queryClient as PGlite;
   } else {

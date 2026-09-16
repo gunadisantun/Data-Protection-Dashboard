@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getViewerFromRequest, toAccessScope } from "@/lib/access";
 import { deleteTask, updateTask } from "@/lib/data";
 import { updateTaskSchema } from "@/lib/validators";
+import { ReviewConflict } from "@/lib/review-policy";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -28,6 +29,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     );
   }
 
+  try {
   const task = await updateTask(id, parsed.data, toAccessScope(viewer));
 
   if (!task) {
@@ -35,6 +37,10 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   return NextResponse.json({ data: task });
+  } catch (error) {
+    if (error instanceof ReviewConflict) return NextResponse.json({ error: error.message }, { status: 409 });
+    return NextResponse.json({ error: "Could not save assessment" }, { status: 500 });
+  }
 }
 
 export async function DELETE(request: Request, context: RouteContext) {

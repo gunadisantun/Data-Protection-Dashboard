@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Download, Filter, Plus, ShieldCheck } from "lucide-react";
+import { Download, Filter, Plus, ShieldCheck, ChevronLeft, ChevronRight } from "lucide-react";
 import { DeleteActionButton } from "@/components/delete-action-button";
 import { RopaImportButton } from "@/components/ropa-import-button";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/form";
 import { Table, TBody, TD, TH, THead } from "@/components/ui/table";
 import { requireViewer, toAccessScope } from "@/lib/access";
-import { getDepartments, getModuleColumnSettings, listRopa } from "@/lib/data";
+import { getDepartments, getModuleColumnSettings, listRopa, getRopaRegistryPage } from "@/lib/data";
+import { positivePage } from "@/lib/operational-dashboard";
 import { getCurrentLocale } from "@/lib/i18n-server";
 import type { Locale } from "@/lib/i18n";
 import { getModuleColumnDefinitions } from "@/lib/module-columns";
@@ -21,6 +22,7 @@ type RegistryPageProps = {
     department?: string;
     risk?: string;
     status?: string;
+    page?: string;
   }>;
 };
 
@@ -30,11 +32,18 @@ export default async function RegistryPage({ searchParams }: RegistryPageProps) 
   const text = registryText[locale];
   const scope = toAccessScope(viewer);
   const filters = await searchParams;
-  const [rows, departments, columnSettings] = await Promise.all([
-    listRopa(filters, scope),
+  const [registry, departments, columnSettings] = await Promise.all([
+    getRopaRegistryPage(filters, positivePage(filters.page), scope),
     getDepartments(scope),
     getModuleColumnSettings("ropa"),
   ]);
+  const { rows } = registry;
+  const pageHref = (page: number) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) if (value && key !== "page") query.set(key, value);
+    query.set("page", String(page));
+    return `/ropa?${query}`;
+  };
   const visibleColumns = getModuleColumnDefinitions(
     "ropa",
     columnSettings.customColumns,
@@ -60,13 +69,7 @@ export default async function RegistryPage({ searchParams }: RegistryPageProps) 
   const exportHref = `/api/ropa/export${
     exportParams.toString() ? `?${exportParams.toString()}` : ""
   }`;
-  const departmentDistribution = departments
-    .map((department) => ({
-      id: department.id,
-      name: department.name,
-      count: rows.filter((activity) => activity.departmentId === department.id).length,
-    }))
-    .filter((department) => department.count > 0);
+  const departmentDistribution = registry.distribution;
   const maxDepartmentCount = Math.max(
     1,
     ...departmentDistribution.map((department) => department.count),
@@ -190,8 +193,13 @@ export default async function RegistryPage({ searchParams }: RegistryPageProps) 
         </Table>
         <div className="flex flex-col justify-between gap-3 border-t border-slate-100 px-5 py-4 text-sm text-slate-600 md:flex-row md:items-center">
           <span>
-            {text.showing} {rows.length} {text.of} {rows.length} {text.entries}
+            {text.showing} {rows.length} {text.of} {registry.total} {text.entries}
           </span>
+          <nav className="flex items-center gap-4" aria-label={locale === "en" ? "Registry pages" : "Halaman registri"}>
+            {registry.page > 1 ? <Link href={pageHref(registry.page - 1)} aria-label={locale === "en" ? "Previous page" : "Halaman sebelumnya"}><ChevronLeft className="h-5 w-5" /></Link> : null}
+            <span>{registry.page} / {registry.pages}</span>
+            {registry.page < registry.pages ? <Link href={pageHref(registry.page + 1)} aria-label={locale === "en" ? "Next page" : "Halaman berikutnya"}><ChevronRight className="h-5 w-5" /></Link> : null}
+          </nav>
         </div>
       </Card>
 

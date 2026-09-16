@@ -12,6 +12,7 @@ const eslintConfig = defineConfig([
     "dist/**",
     "dist-electron/**",
     "dist-electron-test/**",
+    "dist-electron-launch-fix/**",
     "dist-windows/**",
     "outputs/**",
     "out/**",

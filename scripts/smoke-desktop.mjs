@@ -1,0 +1,112 @@
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import net from "node:net";
+import { randomBytes } from "node:crypto";
+
+// Exercise the shipped server with the Electron runtime and an isolated database.
+const [executable, appDirectory] = process.argv.slice(2);
+assert.ok(executable && appDirectory, "Usage: node scripts/smoke-desktop.mjs <Electron executable> <resources/app>");
+const directory = await mkdtemp(path.join(tmpdir(), "privacy-bro-smoke-"));
+const token = randomBytes(32).toString("hex");
+const password = randomBytes(24).toString("hex");
+const serverPath = path.resolve(appDirectory, ".next/standalone/server.js");
+let child;
+let base;
+let output = "";
+
+async function start() {
+  const socket = net.createServer();
+  socket.listen(0, "127.0.0.1");
+  await once(socket, "listening");
+  const port = socket.address().port;
+  await new Promise((resolve) => socket.close(resolve));
+  base = `http://127.0.0.1:${port}`;
+  child = spawn(path.resolve(executable), [serverPath], {
+    cwd: path.dirname(serverPath), windowsHide: true,
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", NODE_ENV: "production",
+      PRIVACY_BRO_OFFLINE: "1", PRIVACY_BRO_DATA_DIR: directory,
+      PRIVACY_BRO_DESKTOP_TOKEN: token, BETTER_AUTH_URL: base,
+      HOSTNAME: "127.0.0.1", PORT: String(port), NEXT_TELEMETRY_DISABLED: "1" },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let spawnError;
+  child.on("error", (error) => { spawnError = error; });
+  for (const stream of [child.stdout, child.stderr]) {
+    stream.on("data", (chunk) => { output = (output + chunk).slice(-12000); });
+  }
+  const deadline = Date.now() + 120000;
+  while (Date.now() < deadline) {
+    if (spawnError) throw spawnError;
+    assert.equal(child.exitCode, null, `Server exited: ${output}`);
+    try {
+      const result = await fetch(`${base}/api/auth/desktop-setup`, { signal: AbortSignal.timeout(5000) });
+      if (result.ok) return await result.json();
+    } catch { /* Wait for database migrations. */ }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(`Server startup timed out: ${output}`);
+}
+
+async function stop() {
+  if (!child || child.exitCode !== null) return;
+  const result = await fetch(`${base}/api/desktop/shutdown`, {
+    method: "POST", headers: { "x-desktop-token": token }, signal: AbortSignal.timeout(30000),
+  });
+  assert.equal(result.status, 200);
+  assert.equal((await result.json()).closed, true);
+  const exited = once(child, "exit");
+  child.kill();
+  await exited;
+  child = null;
+}
+
+async function post(route, body) {
+  return fetch(`${base}${route}`, { method: "POST", headers: {
+    "Content-Type": "application/json", Origin: base,
+  }, body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
+}
+
+async function login() {
+  const result = await post("/api/auth/login", { username: "smokeadmin", password });
+  assert.equal(result.status, 200, `Login failed: ${await result.clone().text()}`);
+  const cookie = result.headers.getSetCookie().map((value) => value.split(";")[0]).join("; ");
+  assert.ok(cookie, "Login must issue a session cookie");
+  const dashboard = await fetch(`${base}/dashboard`, { headers: { Cookie: cookie }, redirect: "manual" });
+  assert.equal(dashboard.status, 200, "Authenticated dashboard must open");
+  assert.ok((await dashboard.text()).length > 1000);
+}
+
+try {
+  assert.equal((await start()).required, true, "Fresh install must require Master Admin setup");
+  const anonymous = await fetch(`${base}/dashboard`, { redirect: "manual" });
+  assert.ok([302, 303, 307, 308].includes(anonymous.status), "Dashboard must require login");
+  const demo = await post("/api/auth/demo", {});
+  assert.ok([403, 404].includes(demo.status), "Demo must be blocked offline");
+  const setup = { username: "smokeadmin", fullName: "Desktop Smoke Admin", email: "smoke@example.test", password, confirmPassword: password };
+  const created = await post("/api/auth/desktop-setup", setup);
+  assert.equal(created.status, 200, await created.text());
+  assert.equal((await post("/api/auth/desktop-setup", setup)).status, 409);
+  await login();
+  await stop();
+  assert.ok((await readdir(directory)).includes("database"), "Database must exist on disk");
+  assert.equal((await start()).required, false, "Restart must preserve the local account");
+  await login();
+  await stop();
+  assert.doesNotMatch(output, /instantiateWasm is not a function|unhandledRejection/);
+  console.log("PASS: packaged database, first-run setup, auth, demo denial, dashboard and restart persistence.");
+} catch (error) {
+  console.error(output);
+  throw error;
+} finally {
+  if (child && child.exitCode === null) {
+    const exited = once(child, "exit");
+    child.kill();
+    await exited;
+  }
+  // directory is generated by mkdtemp and never points to user application data.
+  await rm(directory, { recursive: true, force: true });
+}

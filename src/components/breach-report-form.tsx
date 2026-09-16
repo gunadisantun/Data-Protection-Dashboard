@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Download, Loader2, Mail, Save, Send, ShieldCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
+import { useI18n } from "@/components/language-provider";
+import { formSaveError, savedUpdatedAt, unsavedChangesMessage, useUnsavedChanges } from "@/components/use-unsaved-changes";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,6 +39,7 @@ type BreachReportFormProps = {
     title: string;
     departmentId: string | null;
     status: BreachReportStatus;
+    updatedAt: string;
     answers: Record<string, string | string[]>;
   };
   departments: Department[];
@@ -53,6 +56,7 @@ export function BreachReportForm({
   profileDefaults,
 }: BreachReportFormProps) {
   const router = useRouter();
+  const { locale } = useI18n();
   const [title, setTitle] = useState(report.title);
   const [departmentId, setDepartmentId] = useState(report.departmentId ?? "");
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({
@@ -64,6 +68,12 @@ export function BreachReportForm({
   const [activeSection, setActiveSection] = useState(breachReportSections[0]?.id ?? "");
   const isDpo = viewerRole === "DPO";
   const readOnly = status === "Finalized";
+  const snapshot = JSON.stringify({ title, departmentId, answers });
+  const [savedSnapshot, setSavedSnapshot] = useState(snapshot);
+  const [saveError, setSaveError] = useState("");
+  const expectedUpdatedAt = useRef(report.updatedAt);
+  const saving = useRef(false);
+  useUnsavedChanges(!readOnly && snapshot !== savedSnapshot, unsavedChangesMessage(locale));
 
   const activeSectionData = useMemo(
     () => breachReportSections.find((section) => section.id === activeSection),
@@ -86,12 +96,18 @@ export function BreachReportForm({
   }
 
   async function save(nextStatus = status) {
+    if (saving.current || readOnly) return false;
+    saving.current = true;
     setSaveState("saving");
+    setSaveError("");
+    try {
     const response = await fetch(`/api/breach-reports/${report.id}`, {
+      signal: AbortSignal.timeout(30000),
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title,
+        expectedUpdatedAt: expectedUpdatedAt.current,
         departmentId,
         answers: {
           ...answers,
@@ -103,18 +119,27 @@ export function BreachReportForm({
     });
 
     if (!response.ok) {
+      setSaveError(formSaveError(locale, response.status));
       setSaveState("error");
       return false;
     }
 
+    expectedUpdatedAt.current = savedUpdatedAt(await response.json()) ?? expectedUpdatedAt.current;
+    setSavedSnapshot(snapshot);
     setStatus(nextStatus);
     setSaveState("idle");
     router.refresh();
     return true;
+    } catch {
+      setSaveError(formSaveError(locale));
+      setSaveState("error");
+      return false;
+    } finally { saving.current = false; }
   }
 
   return (
     <div className="mx-auto max-w-[1180px] space-y-6">
+      {saveError ? <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{saveError}</p> : null}
       <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
         <div>
           <div className="flex flex-wrap items-center gap-3">

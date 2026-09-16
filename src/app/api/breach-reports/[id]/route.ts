@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ReviewConflict } from "@/lib/review-policy";
 import { getViewerFromRequest, toAccessScope } from "@/lib/access";
 import { getBreachReportById, updateBreachReport } from "@/lib/data";
 import { breachReportUpdateSchema } from "@/lib/validators";
@@ -52,6 +53,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     return NextResponse.json({ data: report });
   } catch (error) {
+    if (error instanceof ReviewConflict) return NextResponse.json({ error: error.message }, { status: 409 });
     if (error instanceof Error && error.message.includes("Only DPO")) {
       return NextResponse.json({ error: "Only DPO can finalize" }, { status: 403 });
     }

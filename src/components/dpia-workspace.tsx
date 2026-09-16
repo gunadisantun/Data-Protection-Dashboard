@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useRef } from "react";
+import { formSaveError, savedUpdatedAt, unsavedChangesMessage, useUnsavedChanges } from "@/components/use-unsaved-changes";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -53,6 +55,7 @@ type DpiaWorkspaceProps = {
   assessmentId: string;
   resultHref: string;
   initialStatus: AssessmentStatus;
+  initialUpdatedAt?: string;
   riskRegisterReferences: RiskRegisterReference[];
 };
 
@@ -122,6 +125,7 @@ export function DpiaWorkspace({
   assessmentId,
   resultHref,
   initialStatus,
+  initialUpdatedAt,
   riskRegisterReferences,
 }: DpiaWorkspaceProps) {
   const { locale } = useI18n();
@@ -129,6 +133,12 @@ export function DpiaWorkspace({
   const [dpiaDraft, setDpiaDraft] = useState(draft);
   const [status, setStatus] = useState(initialStatus);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [saveError, setSaveError] = useState("");
+  const [savedSnapshot, setSavedSnapshot] = useState(() => JSON.stringify(dpiaDraft));
+  const expectedUpdatedAt = useRef(initialUpdatedAt);
+  const saving = useRef(false);
+  const dirty = JSON.stringify(dpiaDraft) !== savedSnapshot;
+  useUnsavedChanges(dirty, unsavedChangesMessage(locale));
   const [activeTab, setActiveTab] = useState<DpiaTabId>("identity");
   const [activeRiskId, setActiveRiskId] = useState(draft.risks[0]?.id ?? "");
   const [selectedReferenceId, setSelectedReferenceId] = useState(
@@ -147,27 +157,44 @@ export function DpiaWorkspace({
   );
 
   async function saveDraft(nextStatus: AssessmentStatus) {
+    if (saving.current) return false;
+    saving.current = true;
     setSaveState("saving");
-
-    const response = await fetch(`/api/tasks/${assessmentId}`, {
+    setSaveError("");
+    try {
+      const snapshot = JSON.stringify(dpiaDraft);
+      const response = await fetch(`/api/tasks/${assessmentId}`, {
+      signal: AbortSignal.timeout(30000),
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         status: nextStatus,
+        expectedUpdatedAt: expectedUpdatedAt.current,
         notes: serializeDpiaDraftNotes(dpiaDraft),
       }),
     });
 
     if (!response.ok) {
+      setSaveError(formSaveError(locale, response.status));
       setSaveState("error");
       return false;
     }
 
+    expectedUpdatedAt.current = savedUpdatedAt(await response.json());
+    setSavedSnapshot(snapshot);
     setStatus(nextStatus);
     setSaveState("saved");
     return true;
+    } catch {
+      setSaveError(formSaveError(locale));
+      setSaveState("error");
+      return false;
+    } finally {
+      saving.current = false;
+      setSaveState((current) => current === "saving" ? "error" : current);
+    }
   }
 
   async function exportExcel() {
@@ -572,7 +599,7 @@ export function DpiaWorkspace({
           {saveState === "saved"
             ? text.dpiaSaved
             : saveState === "error"
-              ? text.dpiaSaveFailed
+              ? saveError || text.dpiaSaveFailed
               : text.savingDpia}
         </div>
       ) : null}

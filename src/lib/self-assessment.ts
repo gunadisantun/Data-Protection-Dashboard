@@ -48,6 +48,7 @@ export const selfAssessmentActionStatusValues = [
   "In Progress",
   "Done",
   "Deferred",
+  "Pending Review",
 ] as const;
 
 export type SelfAssessmentKind = "UNIT" | "ADDITIONAL" | "GOVERNANCE";
@@ -119,6 +120,13 @@ export type SelfAssessmentAnswerState = {
   pic: string;
   priority: SelfAssessmentPriority | "";
   evidenceFiles?: SelfAssessmentEvidenceFile[];
+  evidenceReview?: {
+    status: "Pending" | "NeedsChanges" | "Accepted";
+    strength: "Weak" | "Adequate" | "Strong";
+    note: string;
+    reviewedBy: string;
+    reviewedAt: string;
+  };
 };
 
 export type SelfAssessmentAnswers = Record<string, SelfAssessmentAnswerState>;
@@ -166,6 +174,9 @@ export type SelfAssessmentActionPlanItem = {
   status: SelfAssessmentActionStatus;
   priority: SelfAssessmentPriority;
   note: string;
+  completionEvidence?: string;
+  closedBy?: string;
+  closedAt?: string;
 };
 
 export type NormalizedSelfAssessmentAnswer =
@@ -489,25 +500,14 @@ export function getEvidenceStrength(
   answerState?: SelfAssessmentAnswerState,
 ): EvidenceStrength {
   const files = answerState?.evidenceFiles ?? [];
-  const requiredCount = getRequiredEvidenceCount(question, answerState);
-  const score = scoreAnswerLevel(answerState?.answer);
+  void question;
 
   if (!files.length) {
     return "None";
   }
 
-  if (requiredCount && files.length < requiredCount) {
-    return "Weak";
-  }
-
-  if (score === 1) {
-    const note = (answerState?.note ?? "").toLowerCase();
-    const hasContext =
-      /owner|pic|pemilik|tanggal|periode|versi|status|berlaku|sistem|proses|unit/.test(note);
-    return hasContext ? "Strong" : "Adequate";
-  }
-
-  return files.length >= 2 ? "Adequate" : "Weak";
+  const review = answerState?.evidenceReview;
+  return review?.status === "Accepted" ? review.strength : "Weak";
 }
 
 export function isSelfAssessmentGap(

@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
+import { formSaveError, unsavedChangesMessage, useUnsavedChanges } from "@/components/use-unsaved-changes";
 import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -223,6 +224,9 @@ export function RopaWizard({
   }));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savedSnapshot, setSavedSnapshot] = useState(() => JSON.stringify(data));
+  const submitting = useRef(false);
+  useUnsavedChanges(JSON.stringify(data) !== savedSnapshot, unsavedChangesMessage(locale));
 
   const checklist = useMemo(
     () => [
@@ -286,9 +290,11 @@ export function RopaWizard({
   }
 
   async function submit() {
+    if (submitting.current) return;
+    submitting.current = true;
     setError(null);
     setIsSubmitting(true);
-
+    try {
     const hasHighRiskCategory = data.highRiskCategories.length > 0;
     const isAutomatedHighRisk = data.highRiskCategories.includes(
       "automated-legal-significant-effect",
@@ -302,6 +308,7 @@ export function RopaWizard({
     const transferSummary = summarizeTransferItems(transferItems);
 
     const response = await fetch("/api/ropa", {
+      signal: AbortSignal.timeout(30000),
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -342,7 +349,10 @@ export function RopaWizard({
     }
 
     const result = (await response.json()) as { id: string };
+    setSavedSnapshot(JSON.stringify(data));
     router.push(`/ropa/${result.id}/result`);
+    } catch { setError(formSaveError(locale)); }
+    finally { submitting.current = false; setIsSubmitting(false); }
   }
 
   return (
