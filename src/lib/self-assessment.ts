@@ -2,6 +2,7 @@ import questionsData from "@/lib/self-assessment-controller-questions.json";
 import legacyQuestionsData from "@/lib/self-assessment-questions.json";
 
 export const selfAssessmentTemplateVersion = "Asesmen Kepatuhan PDP - Kontrol Pengendali 1.0";
+export const selfAssessmentMethodologyVersion = "declaration-1.0";
 export const selfAssessmentSourceWorkbook = "Siloam - Asesmen Kepatuhan PDP draft 1.0.xlsx";
 export const selfAssessmentControlAnswerValues = ["Sudah Ada", "Dalam Proses", "Belum Ada", "Tidak Relevan"] as const;
 
@@ -397,10 +398,9 @@ export function generateSelfAssessmentActionPlan(
     )
     .map((question) => {
       const answer = answers[question.id];
-      const evidenceStrength = getEvidenceStrength(question, answer);
       const priority =
         answer?.priority ||
-        (resolveDefaultSeverity(question, answer, evidenceStrength) === "High"
+        (resolveDefaultSeverity(question, answer) === "High"
           ? "High"
           : "Medium");
       return {
@@ -408,7 +408,7 @@ export function generateSelfAssessmentActionPlan(
         source: question.kind,
         questionId: question.id,
         finding: buildGapFinding(answer?.answer, question),
-        practicalRisk: buildPracticalRisk(answer, question, evidenceStrength),
+        practicalRisk: buildPracticalRisk(answer, question),
         followUp: buildRecommendedAction(answer?.answer, question),
         owner: answer?.pic || "",
         targetDate: "",
@@ -552,6 +552,9 @@ export function getSelfAssessmentValidationIssues(
     if (!answerOptionsForQuestion(question).includes(answer)) {
       issues.push({ questionId: question.id, message: `${question.reference}: pilih status yang tersedia.` });
     }
+    if (normalizeAnswer(answer) === "NOT_RELEVANT" && !isValidNotRelevant(state)) {
+      issues.push({ questionId: question.id, message: `${question.reference}: alasan Tidak Relevan wajib diisi / a reason for N/A is required.` });
+    }
 
   }
 
@@ -566,7 +569,7 @@ function buildGapFinding(
   const normalized = normalizeAnswer(answer);
 
   if (normalized === "UNKNOWN") {
-    return `Belum ada kepastian atau bukti memadai bahwa ${statement}.`;
+    return `Perlu klarifikasi deklarasi unit mengenai ${statement}.`;
   }
 
   if (normalized === "PARTIAL") {
@@ -574,14 +577,14 @@ function buildGapFinding(
   }
 
   if (normalized === "GAP") {
-    return `Belum terdapat kontrol, proses, atau bukti untuk memastikan bahwa ${statement}.`;
+    return `Unit menyatakan belum terdapat kontrol atau proses untuk memastikan bahwa ${statement}.`;
   }
 
   if (normalized === "COMPLIANT") {
-    return `Evidence belum cukup kuat untuk membuktikan bahwa ${statement}.`;
+    return `Unit menyatakan bahwa ${statement}.`;
   }
 
-  return `Belum terdapat kontrol atau bukti memadai untuk memastikan bahwa ${statement}.`;
+  return `Perlu klarifikasi alasan ketidakberlakuan: ${statement}.`;
 }
 
 function normalizeQuestionToStatement(value: string) {
@@ -599,6 +602,9 @@ function buildRecommendedAction(
   answer: string | undefined,
   question: SelfAssessmentQuestion,
 ) {
+  if (normalizeAnswer(answer) === "UNKNOWN" || normalizeAnswer(answer) === "NOT_RELEVANT") {
+    return "Klarifikasi jawaban dan keberlakuan kontrol dengan unit dan DPO.";
+  }
   if (question.suggestedRemediation) {
     return question.suggestedRemediation;
   }
@@ -610,23 +616,22 @@ function buildRecommendedAction(
   }
 
   if (normalized === "PARTIAL") {
-    return `Lengkapi kontrol atau dokumentasi yang belum tersedia${question.evidence ? `, termasuk ${question.evidence}` : ""}.`;
+    return "Lengkapi kontrol atau dokumentasi yang dinyatakan belum tersedia.";
   }
 
-  return `Buat atau implementasikan kontrol yang diperlukan${question.evidence ? ` dan siapkan bukti minimal: ${question.evidence}` : ""}.`;
+  return "Buat atau implementasikan kontrol yang dinyatakan belum tersedia.";
 }
 
 function resolveDefaultSeverity(
   question: SelfAssessmentQuestion,
   answerState: SelfAssessmentAnswerState | undefined,
-  evidenceStrength: EvidenceStrength,
 ) {
   const raw = `${answerState?.priority || question.defaultSeverity || "Medium"}`.toLowerCase();
   const normalized = normalizeAnswer(answerState?.answer);
   if (containsCriminalIndicator(answerState?.note ?? "")) {
     return "High";
   }
-  if (normalized === "GAP" || normalized === "UNKNOWN" || evidenceStrength === "None") {
+  if (normalized === "GAP" || normalized === "UNKNOWN") {
     return raw.includes("critical") || raw.includes("high") ? "High" : "Medium";
   }
   if (raw.includes("critical") || raw.includes("high")) {
@@ -641,7 +646,6 @@ function resolveDefaultSeverity(
 function buildPracticalRisk(
   answerState: SelfAssessmentAnswerState | undefined,
   question: SelfAssessmentQuestion,
-  evidenceStrength: EvidenceStrength,
 ) {
   const administrativeRisk =
     question.administrativeRisk ||
@@ -658,13 +662,12 @@ function buildPracticalRisk(
     `Finding/isu utama: ${buildGapFinding(answerState?.answer, question)}`,
     `Unit dan proses terdampak: ${question.applicability || "Unit/proses yang menjawab assessment ini."}`,
     `Pasal/area UU PDP: ${question.articleReference || question.reference || "-"}; prinsip/kategori: ${question.principleCategory || question.area}.`,
-    `Jawaban unit: ${answerState?.answer || "Belum dijawab"}; catatan: ${answerState?.note || "-"}; evidence strength: ${evidenceStrength}.`,
+    `Jawaban unit: ${answerState?.answer || "Belum dijawab"}; catatan: ${answerState?.note || "-"}.`,
     `Risiko ketidakpatuhan: ${question.nonComplianceRisk || "Bukti kepatuhan dan akuntabilitas PDP menjadi lemah."} ${administrativeRisk} ${criminalRisk} ${civilRisk}`,
     "Dampak praktis: proses dapat berjalan tanpa kontrol terdokumentasi, pembuktian kepatuhan menjadi sulit, dan tindak lanjut DPO/PIC bisa terlambat.",
     `Root cause sementara: ${answerState?.note ? "lihat catatan unit; perlu validasi DPO." : "belum ada catatan penyebab dari unit."}`,
     `Rekomendasi remediasi: ${buildRecommendedAction(answerState?.answer, question)}`,
-    `Evidence yang masih perlu diminta: ${question.evidence || question.minimumEvidence || "Evidence relevan dengan owner/PIC, tanggal/periode, versi/status berlaku, dan konteks proses."}`,
-    `Priority/owner/target: ${resolveDefaultSeverity(question, answerState, evidenceStrength)}; ${answerState?.pic || "owner belum ditentukan"}; target ditentukan saat review action plan.`,
+    `Priority/owner/target: ${resolveDefaultSeverity(question, answerState)}; ${answerState?.pic || "owner belum ditentukan"}; target ditentukan saat review action plan.`,
   ].join("\n");
 }
 

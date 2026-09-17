@@ -144,4 +144,18 @@ describe("review integrity in an isolated local database", () => {
     expect(filtered.inbox.page).toBe(1);
     expect(filtered.inbox.rows).toHaveLength(1);
   });
+
+  it("submits and finalizes declarations without attachments and preserves their final PDF", async () => {
+    const created = await data.createSelfAssessment({ departmentId: other.departmentId! }, other);
+    const answers = emptySelfAssessmentAnswers();
+    Object.values(answers).forEach(a => { a.answer = "Sudah Ada"; });
+    const submitted = await data.updateSelfAssessment(created!.id, { expectedVersion: created!.version, answers, status: "Submitted" }, other);
+    expect(submitted?.status).toBe("Submitted");
+    const final = await data.updateSelfAssessment(created!.id, { expectedVersion: submitted!.version, status: "Finalized" }, dpo);
+    const record = await review.getFinalRevision(created!.id, final!.revision, other);
+    expect(record?.snapshot).toMatchObject({ methodologyVersion: "declaration-1.0" });
+    expect(record?.pdfBase64).toBeTruthy();
+    await review.createSelfAssessmentRevision(created!.id, final!.version, other);
+    expect((await review.getFinalRevision(created!.id, final!.revision, other))?.pdfBase64).toBe(record?.pdfBase64);
+  }, 120000);
 });

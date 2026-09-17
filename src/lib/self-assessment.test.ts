@@ -111,7 +111,7 @@ describe("controller workbook single-layer assessment", () => {
     const summary = calculateSelfAssessmentSummary(answers);
     const report = buildReportMetrics({ assessmentNumber: "TEST", title: "Test", status: "Draft", createdAt: "2026-09-10", updatedAt: "2026-09-10", answers, actionPlan: [] });
     expect(summary).toMatchObject({ applicable: 42, percentage: 0.5, gaps: 14, partial: 14, clarification: 0 });
-    expect(report).toMatchObject({ applicableControls: 42, totalControls: 56, readinessScore: 50, evidenceGapCount: 28, evidenceConfidence: 0 });
+    expect(report).toMatchObject({ applicableControls: 42, totalControls: 56, readinessScore: 50, evidenceGapCount: 0, evidenceConfidence: null });
     expect(report.controlGapItems).toHaveLength(summary.gaps);
     expect(report.partialItems).toHaveLength(summary.partial);
     expect(getSelfAssessmentValidationIssues(answers)).toEqual([]);

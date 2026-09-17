@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import net from "node:net";
@@ -78,6 +78,28 @@ async function login() {
   const dashboard = await fetch(`${base}/dashboard`, { headers: { Cookie: cookie }, redirect: "manual" });
   assert.equal(dashboard.status, 200, "Authenticated dashboard must open");
   assert.ok((await dashboard.text()).length > 1000);
+  return cookie;
+}
+
+async function checkDeclarationReport(cookie) {
+  const request = (route, method, body) => fetch(`${base}${route}`, {
+    method, headers: { Cookie: cookie, Origin: base, "Content-Type": "application/json" },
+    ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(60000),
+  });
+  const created = await request("/api/self-assessments", "POST", { departmentId: "dept-hr" });
+  assert.equal(created.status, 200, await created.clone().text());
+  const assessment = (await created.json()).data;
+  const questions = JSON.parse(await readFile("src/lib/self-assessment-controller-questions.json", "utf8"));
+  const answers = Object.fromEntries(questions.map(q => [q.id, { answer: "Sudah Ada", note: "", pic: "", priority: "" }]));
+  const route = `/api/self-assessments/${assessment.id}`;
+  const submitted = await request(route, "PATCH", { expectedVersion: assessment.version, answers, status: "Submitted" });
+  assert.equal(submitted.status, 200, await submitted.clone().text());
+  const finalized = await request(route, "PATCH", { expectedVersion: (await submitted.json()).data.version, status: "Finalized", reportLocale: "en" });
+  assert.equal(finalized.status, 200, await finalized.clone().text());
+  const report = await request(`${route}/export`, "GET");
+  assert.equal(report.status, 200);
+  assert.equal(Buffer.from(await report.arrayBuffer()).subarray(0, 4).toString(), "%PDF");
+  console.log("PASS: offline declaration submission, finalization and PDF export without attachments.");
 }
 
 try {
@@ -90,7 +112,8 @@ try {
   const created = await post("/api/auth/desktop-setup", setup);
   assert.equal(created.status, 200, await created.text());
   assert.equal((await post("/api/auth/desktop-setup", setup)).status, 409);
-  await login();
+  const cookie = await login();
+  if (process.argv.includes("--self-assessment")) await checkDeclarationReport(cookie);
   await stop();
   assert.ok((await readdir(directory)).includes("database"), "Database must exist on disk");
   assert.equal((await start()).required, false, "Restart must preserve the local account");

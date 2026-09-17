@@ -167,6 +167,34 @@ export const ropaActivities = pgTable("ropa_activities", {
   updatedAt: text("updated_at").notNull(),
 });
 
+export const ropaFlowAssets = pgTable("ropa_flow_assets", {
+  id: text("id").primaryKey(),
+  departmentId: text("department_id").notNull().references(() => departments.id),
+  createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+  kind: text("kind").notNull(),
+  name: text("name").notNull(),
+  owner: text("owner").notNull().default(""),
+  location: text("location").notNull().default(""),
+  country: text("country").notNull().default(""),
+  retention: text("retention").notNull().default(""),
+  description: text("description").notNull().default(""),
+  version: integer("version").notNull().default(0),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const ropaFlowLinks = pgTable("ropa_flow_links", {
+  id: text("id").primaryKey(),
+  sourceRopaId: text("source_ropa_id").references(() => ropaActivities.id, { onDelete: "cascade" }),
+  sourceAssetId: text("source_asset_id").references(() => ropaFlowAssets.id, { onDelete: "cascade" }),
+  targetRopaId: text("target_ropa_id").references(() => ropaActivities.id, { onDelete: "cascade" }),
+  targetAssetId: text("target_asset_id").references(() => ropaFlowAssets.id, { onDelete: "cascade" }),
+  label: text("label").notNull(),
+  dataCategories: jsonb("data_categories").$type<string[]>().notNull().default([]),
+  note: text("note").notNull().default(""),
+  createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: text("created_at").notNull(),
+});
+
 export const assessments = pgTable("assessments", {
   id: text("id").primaryKey(),
   ropaId: text("ropa_id").notNull().references(() => ropaActivities.id),

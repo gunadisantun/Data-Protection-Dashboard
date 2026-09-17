@@ -344,6 +344,7 @@ export const selfAssessmentCreateSchema = z.object({
 });
 
 export const selfAssessmentUpdateSchema = z.object({
+  reportLocale: z.enum(["id", "en"]).optional(),
   expectedVersion: z.number().int().nonnegative().optional(),
   ppGuidanceEnabled: z.boolean().optional(),
   title: z.string().trim().min(3, "judul minimal 3 karakter").optional(),

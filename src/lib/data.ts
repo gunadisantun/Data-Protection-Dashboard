@@ -23,6 +23,8 @@ import {
   privacyMapOverrides,
   riskRegisterEntries,
   ropaActivities,
+  ropaFlowAssets,
+  ropaFlowLinks,
   selfAssessments,
   session,
   sopDocuments,
@@ -206,6 +208,8 @@ export async function cleanupDemoSession(sessionId: string) {
   const demoDepartmentPrefix = `demo-dept-${sessionId}-`;
 
   await db.transaction(async (tx) => {
+    await tx.delete(ropaFlowLinks).where(eq(ropaFlowLinks.createdBy, userId));
+    await tx.delete(ropaFlowAssets).where(eq(ropaFlowAssets.createdBy, userId));
     const demoRopaIds = (
       await tx
         .select({ id: ropaActivities.id })
@@ -3137,6 +3141,7 @@ export async function createSelfAssessment(
 export async function updateSelfAssessment(
   id: string,
   payload: {
+    reportLocale?: "id" | "en";
     expectedVersion?: number;
     title?: string;
     ppGuidanceEnabled?: boolean;
@@ -3205,16 +3210,12 @@ export async function updateSelfAssessment(
 
   for (const item of actionPlan) {
     const previous = (existing.actionPlan as SelfAssessmentActionPlanItem[]).find((row) => row.id === item.id);
-    if (item.status === "Pending Review" && !item.completionEvidence?.trim()) {
-      throw new Error("Completion evidence is required before requesting closure review");
-    }
     const closureFields = ["status", "followUp", "owner", "targetDate", "priority", "note", "completionEvidence"] as const;
     if (previous?.status === "Done" && scope?.role === "User" && closureFields.some((key) => item[key] !== previous[key])) {
       throw new Error("Only DPO or Master Admin can amend closed actions");
     }
     if (item.status === "Done" && previous?.status !== "Done") {
       if (scope?.role === "User") throw new Error("Only DPO or Master Admin can close actions");
-      if (!item.completionEvidence?.trim()) throw new Error("Completion evidence is required to close an action");
       item.closedBy = scope?.userId;
       item.closedAt = now;
     } else {
@@ -3247,7 +3248,7 @@ export async function updateSelfAssessment(
 
   if (nextStatus === "Finalized") {
     const [finalizer] = scope?.userId ? await tx.select().from(users).where(eq(users.id, scope.userId)).limit(1) : [];
-    await captureFinalRevision(tx, { ...existing, ...updated, answers, actionPlan: [...archivedActions, ...actionPlan], finalizer: finalizer ?? existing.finalizer });
+    await captureFinalRevision(tx, { ...existing, ...updated, locale: payload.reportLocale, answers, actionPlan: [...archivedActions, ...actionPlan], finalizer: finalizer ?? existing.finalizer });
   }
 
   await tx.insert(auditEvents).values({

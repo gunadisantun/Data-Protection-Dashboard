@@ -20,6 +20,8 @@ import {
   privacyMapOverrides,
   riskRegisterEntries,
   ropaActivities,
+  ropaFlowAssets,
+  ropaFlowLinks,
   selfAssessments,
   sopDocuments,
   session,
@@ -79,6 +81,8 @@ async function initializeDatabase() {
 }
 
 export async function resetAndSeedDatabase() {
+  await db.delete(ropaFlowLinks);
+  await db.delete(ropaFlowAssets);
   await db.delete(auditEvents);
   await db.delete(sopDocuments);
   await db.delete(breachReports);

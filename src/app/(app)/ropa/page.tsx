@@ -88,6 +88,9 @@ export default async function RegistryPage({ searchParams }: RegistryPageProps) 
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           <RopaImportButton />
+          <Link href="/ropa/data-flow" className={buttonVariantSecondary(false)}>
+            {locale === "en" ? "Data Flow" : "Alur Data"}
+          </Link>
           <Link
             href="/api/ropa/template"
             className={buttonVariantSecondary(false)}

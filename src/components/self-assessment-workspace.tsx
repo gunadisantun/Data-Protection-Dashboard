@@ -23,7 +23,6 @@ import {
   answerOptionsForQuestion,
   calculateSelfAssessmentSummary,
   generateSelfAssessmentActionPlan,
-  getEvidenceStrength,
   getSelfAssessmentValidationIssues,
   isSelfAssessmentQuestionApplicable,
   isScoredSelfAssessmentQuestion,
@@ -275,6 +274,7 @@ export function SelfAssessmentWorkspace({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         expectedVersion: version,
+        reportLocale: locale,
         title,
         departmentId,
         answers,
@@ -316,7 +316,7 @@ export function SelfAssessmentWorkspace({
     router.refresh();
 
     if (options.downloadAfter) {
-      window.location.href = `/api/self-assessments/${assessment.id}/export`;
+      window.location.href = `/api/self-assessments/${assessment.id}/export?locale=${locale}`;
     }
     } catch { setMessage(locale === "en" ? "Connection failed. Your changes remain in this form." : "Koneksi gagal. Isian Anda tetap ada di form ini."); }
     finally { setIsSaving(false); }
@@ -370,7 +370,7 @@ export function SelfAssessmentWorkspace({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href={`/api/self-assessments/${assessment.id}/export`}>
+          <Link href={`/api/self-assessments/${assessment.id}/export?locale=${locale}`}>
             <Button variant="secondary">
               <Download className="h-4 w-4" />
               Download Full Report
@@ -461,14 +461,14 @@ export function SelfAssessmentWorkspace({
       <AssessmentRevisionHistory id={assessment.id} revision={revision} finalized={readOnly} busy={isSaving} onRevise={() => void revise()} />
 
       <div className="grid gap-4 md:grid-cols-5">
-        <MetricCard label="Kontrol Terjawab" value={`${summary.answered}/${summary.totalQuestions}`} />
-        <MetricCard label="Kontrol Dinilai" value={summary.applicable} />
+        <MetricCard label={locale === "en" ? "Answered Controls" : "Kontrol Terjawab"} value={`${summary.answered}/${summary.totalQuestions}`} />
+        <MetricCard label={locale === "en" ? "Applicable Controls" : "Kontrol Dinilai"} value={summary.applicable} />
         <MetricCard
-          label="Pemenuhan Kontrol"
+          label={locale === "en" ? "Self-Declared Fulfillment" : "Pemenuhan Berdasarkan Deklarasi"}
           value={summary.percentage === null ? "N/A" : `${Math.round(summary.percentage * 100)}%`}
         />
-        <MetricCard label="Belum Ada" value={summary.gaps} tone={summary.gaps ? "red" : "green"} />
-        <MetricCard label="Dalam Proses" value={summary.partial} />
+        <MetricCard label={locale === "en" ? "Not in Place" : "Belum Ada"} value={summary.gaps} tone={summary.gaps ? "red" : "green"} />
+        <MetricCard label={locale === "en" ? "In Progress" : "Dalam Proses"} value={summary.partial} />
       </div>
 
       {hasLegacySelfAssessmentAnswers(answers) ? (
@@ -750,11 +750,12 @@ function Questionnaire({
                   <div className="mt-4">
                     <div className="space-y-2">
                       <Label help={en ? "Describe the assessed process, any gaps, and supporting references. A specific reason is needed to exclude an inapplicable control from scoring." : buildNoteHelp(question, answer.answer)}>
-                        {en ? "Notes / Implementation Evidence (Optional)" : "Keterangan / Bukti Pelaksanaan (Opsional)"}
+                        {answer.answer === "Tidak Relevan" ? (en ? "Reason for N/A (Required)" : "Alasan Tidak Relevan (Wajib)") : (en ? "Notes (Optional)" : "Catatan Lanjutan (Opsional)")}
                       </Label>
                       <Textarea
                         disabled={readOnly}
                         value={answer.note}
+                        required={answer.answer === "Tidak Relevan"}
                         onChange={(event) => updateAnswer(question.id, "note", event.target.value)}
                         className="min-h-28"
                         placeholder={en ? "Describe any gap, cause, affected process, and known follow-up plan..." : "Jelaskan gap, penyebab, proses terdampak, dan rencana tindak lanjut bila diketahui..."}
@@ -796,32 +797,29 @@ function EvidenceUploader({
   onUpload: (questionId: string, file: File) => Promise<void>;
   onOpen: (evidenceId: string) => Promise<void>;
 }) {
-  const strength = getEvidenceStrength(question, answer);
+  const { locale } = useI18n();
+  const en = locale === "en";
+  void answer;
   return (
     <div className="space-y-2">
-      <Label help={question.evidenceValidation || "Evidence bersifat opsional. Jika diunggah, pastikan relevan dengan unit/proses, memiliki tanggal atau periode, versi/status berlaku jika dokumen, serta konsisten dengan jawaban assessment."}>
-        Bukti Pendukung
+      <Label help={en ? "Attachments are optional and do not affect your declaration score or submission." : "Lampiran bersifat opsional dan tidak memengaruhi skor deklarasi atau pengajuan."}>
+        {en ? "Supporting Attachments (Optional)" : "Lampiran Pendukung (Opsional)"}
       </Label>
       <div className="rounded-lg border border-[color:var(--pv-border)] bg-slate-50 p-3">
         <p className="text-xs font-semibold leading-5 text-slate-500">
-          Opsional: {evidenceRequirement || "dokumen pendukung yang relevan."}
+          {en ? "Optional reference: " : "Referensi opsional: "}{evidenceRequirement || "-"}
         </p>
         {question.recommendedEvidence ? (
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            Tambahan disarankan: {question.recommendedEvidence}
+            {en ? "Suggested: " : "Saran: "}{question.recommendedEvidence}
           </p>
         ) : null}
         <div className="mt-3 flex flex-wrap gap-2">
-          <Badge tone="slate">Bukti opsional</Badge>
-          {files.length ? (
-            <Badge tone={strength === "None" || strength === "Weak" ? "yellow" : "green"}>
-              Kualitas bukti: {strength}
-            </Badge>
-          ) : null}
+          <Badge tone="slate">{en ? "Optional" : "Opsional"}</Badge>
         </div>
         <label className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-blue-200 bg-white px-3 py-3 text-sm font-bold text-blue-700 transition hover:bg-blue-50">
           <Upload className="h-4 w-4" />
-          {isUploading ? "Uploading..." : "Upload Bukti"}
+          {isUploading ? (en ? "Uploading..." : "Mengunggah...") : (en ? "Upload attachment" : "Unggah lampiran")}
           <input
             type="file"
             className="sr-only"
@@ -852,7 +850,7 @@ function EvidenceUploader({
           </div>
         ) : (
           <p className="mt-3 text-xs font-semibold text-slate-400">
-            Belum ada bukti yang di-upload.
+            {en ? "No attachments; attachments are optional." : "Tidak ada lampiran; lampiran bersifat opsional."}
           </p>
         )}
       </div>
@@ -864,7 +862,7 @@ function buildNoteHelp(
   question: (typeof selfAssessmentQuestions)[number],
   answer: string,
 ) {
-  void answer;
+  if (answer === "Tidak Relevan") return "Jelaskan alasan spesifik kontrol tidak berlaku pada unit atau proses ini. Alasan diperlukan untuk mengecualikan kontrol dari penilaian.";
   if (!isScoredSelfAssessmentQuestion(question)) {
     return (
       sanitizeAssessmentHelp(question.noteRequiredWhen) ||

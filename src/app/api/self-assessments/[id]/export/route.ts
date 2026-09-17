@@ -31,6 +31,7 @@ export async function GET(request: Request, context: RouteContext) {
   if (revision !== null && !snapshot) return NextResponse.json({ error: "Revision not found" }, { status: 404 });
   const bytes = snapshot ? Buffer.from(snapshot.pdfBase64, "base64") : await generateSelfAssessmentPdf({
     ...assessment,
+    locale: new URL(request.url).searchParams.get("locale") === "en" ? "en" : "id",
     answers: assessment.answers as SelfAssessmentAnswers,
     actionPlan: assessment.actionPlan as SelfAssessmentActionPlanItem[],
   });

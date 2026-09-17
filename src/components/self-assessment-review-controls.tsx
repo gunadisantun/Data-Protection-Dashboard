@@ -35,7 +35,8 @@ export function EvidenceReviewControl({ answer, canReview, disabled, onReview }:
   const review = answer.evidenceReview;
   if (!answer.evidenceFiles?.length) return null;
   return <div className="mt-4 space-y-2 border-t border-slate-200 pt-3 text-sm">
-    <p className="font-semibold">{en ? "Evidence review" : "Review bukti"}: {review?.status === "Accepted" ? (en ? "Accepted" : "Diterima") : review?.status === "NeedsChanges" ? (en ? "Changes requested" : "Perlu perbaikan") : (en ? "Not reviewed" : "Belum direview")}</p>
+    <p className="font-semibold">{en ? "Optional attachment review" : "Review lampiran opsional"}: {review?.status === "Accepted" ? (en ? "Accepted" : "Diterima") : review?.status === "NeedsChanges" ? (en ? "Changes requested" : "Perlu perbaikan") : (en ? "Not reviewed" : "Belum direview")}</p>
+    <p className="text-xs text-slate-500">{en ? "This review does not affect the declaration score or finalization." : "Review ini tidak memengaruhi skor deklarasi atau finalisasi."}</p>
     {review ? <p className="text-slate-600">{review.note} <span className="text-xs">({new Date(review.reviewedAt).toLocaleDateString(en ? "en-GB" : "id-ID")})</span></p> : null}
     {canReview ? <details><summary className="cursor-pointer text-blue-700">{en ? "DPO decision" : "Keputusan DPO"}</summary>
       <fieldset disabled={disabled} className="mt-3 space-y-3">

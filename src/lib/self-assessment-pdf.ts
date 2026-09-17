@@ -9,6 +9,8 @@ import {
   selfAssessmentTemplateVersion,
   hasCurrentSelfAssessmentAnswers,
   hasLegacySelfAssessmentAnswers,
+  calculateSelfAssessmentSummary,
+  generateSelfAssessmentActionPlan,
   type EvidenceStrength,
   type NormalizedSelfAssessmentAnswer,
   type SelfAssessmentActionPlanItem,
@@ -17,7 +19,8 @@ import {
   type SelfAssessmentQuestion,
 } from "@/lib/self-assessment";
 
-type PdfAssessment = {
+export type PdfAssessment = {
+  locale?: "id" | "en";
   assessmentNumber: string;
   title: string;
   status: string;
@@ -120,7 +123,7 @@ type ReportMetrics = {
   evidenceGapCount: number;
   evidenceRequestCount: number;
   clarificationCount: number;
-  overallComplianceLevel: "Compliance" | "Partial Compliance" | "Non-Compliance";
+  overallComplianceLevel: "Compliance" | "Partial Compliance" | "Non-Compliance" | "N/A";
   auditReadiness: "High" | "Medium" | "Low";
   reportQuestions: ReportQuestion[];
   scoringQuestions: ReportQuestion[];
@@ -239,6 +242,11 @@ async function loadReportFonts(pdf: PDFDocument) {
 }
 
 export async function generateSelfAssessmentPdf(input: PdfAssessment) {
+  const { renderDeclarationReport } = await import("./self-assessment-declaration-pdf");
+  return renderDeclarationReport(input);
+}
+
+export async function generateLegacySelfAssessmentPdf(input: PdfAssessment) {
   if (hasLegacySelfAssessmentAnswers(input.answers) && !hasCurrentSelfAssessmentAnswers(input.answers)) {
     input = { ...input, status: "Draft", finalizedAt: null, finalizer: null };
   }
@@ -246,7 +254,7 @@ export async function generateSelfAssessmentPdf(input: PdfAssessment) {
   const { regular, bold } = await loadReportFonts(pdf);
   const page = pdf.addPage([pageWidth, pageHeight]);
   const kit: PdfKit = { pdf, regular, bold, page, y: pageHeight - margin, section: "Cover" };
-  const metrics = buildReportMetrics(input);
+  const metrics = buildReportMetrics(input, true);
 
   drawCover(kit, input, metrics);
   drawDisclaimer(kit);
@@ -284,8 +292,10 @@ export async function generateSelfAssessmentPdf(input: PdfAssessment) {
   return Buffer.from(bytes);
 }
 
-export function buildReportMetrics(input: PdfAssessment): ReportMetrics {
+export function buildReportMetrics(input: PdfAssessment, legacyEvidenceModel = false): ReportMetrics {
   const generatedAt = new Date();
+  const declaration = calculateSelfAssessmentSummary(input.answers);
+  const actions = generateSelfAssessmentActionPlan(input.answers);
   const controlQuestions = selfAssessmentQuestions.filter(
     (question) => isScoredSelfAssessmentQuestion(question) && isSelfAssessmentQuestionApplicable(question, input.answers),
   );
@@ -298,14 +308,12 @@ export function buildReportMetrics(input: PdfAssessment): ReportMetrics {
     const isNaValid = normalized === "NOT_RELEVANT" && note.length > 0;
     const evidenceFiles = state?.evidenceFiles ?? [];
     const evidenceStrength = getEvidenceStrength(question, state);
-    const evidenceRequired = isEvidenceRequiredForReport(question, answer);
+    const evidenceRequired = legacyEvidenceModel && isEvidenceRequiredForReport(question, answer);
     const isEvidenceGap =
       evidenceRequired &&
       (normalized === "COMPLIANT" || normalized === "PARTIAL") &&
       !["Adequate", "Strong"].includes(evidenceStrength);
-    const isEvidenceRequest =
-      (normalized === "GAP" || normalized === "UNKNOWN") &&
-      Boolean(question.minimumEvidence || question.evidence || question.recommendedEvidence);
+    const isEvidenceRequest = legacyEvidenceModel && (normalized === "GAP" || normalized === "UNKNOWN") && Boolean(question.minimumEvidence || question.evidence || question.recommendedEvidence);
     const isClarification =
       normalized === "UNKNOWN" || (normalized === "NOT_RELEVANT" && !isNaValid);
     const isApplicableForScore = normalized !== "NOT_RELEVANT" || !isNaValid;
@@ -324,7 +332,7 @@ export function buildReportMetrics(input: PdfAssessment): ReportMetrics {
       isEvidenceGap,
       isEvidenceRequest,
       isClarification,
-      priority: resolvePriority(question, normalized, isEvidenceGap),
+      priority: legacyEvidenceModel ? resolvePriority(question, normalized, isEvidenceGap) : actions.find(item => item.questionId === question.id)?.priority || resolvePriority(question, normalized, false),
     };
   });
 
@@ -400,7 +408,7 @@ export function buildReportMetrics(input: PdfAssessment): ReportMetrics {
     evidenceGapCount: evidenceGapItems.length,
     evidenceRequestCount,
     clarificationCount: clarificationItems.length,
-    overallComplianceLevel,
+    overallComplianceLevel: legacyEvidenceModel ? overallComplianceLevel : declaration.percentage === null ? "N/A" : declaration.status === "Baik" ? "Compliance" : declaration.status === "Perlu Perbaikan" ? "Partial Compliance" : "Non-Compliance",
     auditReadiness: getAuditReadiness(evidenceConfidence, evidenceGapItems.length),
     reportQuestions,
     scoringQuestions,
@@ -1744,10 +1752,9 @@ function addFooters(pdf: PDFDocument, font: PdfKit["regular"]) {
 function isEvidenceRequiredForReport(question: SelfAssessmentQuestion, answer: string) {
   const normalized = normalizeAnswer(answer);
   const flag = `${question.evidenceRequirementFlag || ""} ${question.minimumUploadEvidence || ""}`.toLowerCase();
-  const evidenceAnswers = question.evidenceAnswers ?? [];
   if (normalized === "COMPLIANT" || normalized === "PARTIAL") return true;
   if (flag.includes("wajib") || (question.minimumUploadEvidence ?? 0) > 0) return true;
-  return evidenceAnswers.includes(answer) && normalized !== "NOT_RELEVANT";
+  return (question.evidenceAnswers ?? []).includes(answer) && normalized !== "NOT_RELEVANT";
 }
 
 function getOverallComplianceLevel(input: {
@@ -1762,15 +1769,12 @@ function getOverallComplianceLevel(input: {
   hasFundamentalCriticalGap: boolean;
 }): ReportMetrics["overallComplianceLevel"] {
   const score = input.readinessScore ?? 0;
-  let level: ReportMetrics["overallComplianceLevel"] =
+  const level: ReportMetrics["overallComplianceLevel"] =
     score >= 90 && input.highCriticalGapCount === 0 && input.controlGapCount === 0 && (input.evidenceConfidence ?? 0) >= 70
       ? "Compliance"
       : score < 60 || input.hasFundamentalCriticalGap
         ? "Non-Compliance"
         : "Partial Compliance";
-  if ((input.evidenceConfidence ?? 100) < 50 && input.evidenceGapCount > 0 && level === "Compliance") {
-    level = "Partial Compliance";
-  }
   return level;
 }
 
