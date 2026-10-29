@@ -13,6 +13,7 @@ import {
   Globe2,
   Grid2X2,
   HelpCircle,
+  KeyRound,
   LogOut,
   Menu,
   Plus,
@@ -58,6 +59,8 @@ export type AppShellViewer = {
 const masterAdminNavItems: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: Grid2X2 },
   { href: "/ropa", label: "RoPA Registry", icon: FileText },
+  { href: "/dsr", label: "Data Subject Requests", icon: KeyRound },
+  { href: "/consent", label: "Consent Management", icon: ClipboardCheck },
   {
     href: "/assessments/dpia",
     label: "DPIA",
@@ -82,6 +85,8 @@ const masterAdminNavItems: NavItem[] = [
 const dpoNavItems: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: Grid2X2 },
   { href: "/ropa", label: "RoPA Registry", icon: FileText },
+  { href: "/dsr", label: "Data Subject Requests", icon: KeyRound },
+  { href: "/consent", label: "Consent Management", icon: ClipboardCheck },
   {
     href: "/assessments/dpia",
     label: "DPIA",
@@ -107,6 +112,8 @@ const dpoNavItems: NavItem[] = [
 const userNavItems: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: Grid2X2 },
   { href: "/ropa", label: "RoPA Registry", icon: FileText },
+  { href: "/dsr", label: "Data Subject Requests", icon: KeyRound },
+  { href: "/consent", label: "Consent Management", icon: ClipboardCheck },
   {
     href: "/assessments/dpia",
     label: "DPIA",
@@ -932,6 +939,12 @@ function translateNavItemLabel(
   }
   if (item.href === "/assessments/ai-impact") {
     return t("nav.aiImpact");
+  }
+  if (item.href === "/dsr") {
+    return t("nav.dsr");
+  }
+  if (item.href === "/consent") {
+    return t("nav.consent");
   }
   if (item.href === "/reports") {
     return t("nav.summary");

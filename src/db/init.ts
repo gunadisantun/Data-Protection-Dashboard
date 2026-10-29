@@ -22,6 +22,16 @@ import {
   ropaActivities,
   ropaFlowAssets,
   ropaFlowLinks,
+  consentEvents,
+  consentTasks,
+  consentRecords,
+  consentTemplates,
+  consentPreferenceTokens,
+  dsrEvents,
+  dsrTasks,
+  dsrPublicTokens,
+  dsrRequests,
+  dsrResponseTemplates,
   selfAssessments,
   sopDocuments,
   session,
@@ -81,6 +91,16 @@ async function initializeDatabase() {
 }
 
 export async function resetAndSeedDatabase() {
+  await db.delete(dsrEvents);
+  await db.delete(dsrTasks);
+  await db.delete(dsrPublicTokens);
+  await db.delete(dsrRequests);
+  await db.delete(dsrResponseTemplates);
+  await db.delete(consentEvents);
+  await db.delete(consentTasks);
+  await db.delete(consentPreferenceTokens);
+  await db.delete(consentRecords);
+  await db.delete(consentTemplates);
   await db.delete(ropaFlowLinks);
   await db.delete(ropaFlowAssets);
   await db.delete(auditEvents);

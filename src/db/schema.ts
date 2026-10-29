@@ -611,6 +611,154 @@ export const regulatorySources = pgTable("regulatory_sources", {
   updatedAt: text("updated_at").notNull(),
 });
 
+export const consentTemplates = pgTable("consent_templates", {
+  id: text("id").primaryKey(),
+  ropaId: text("ropa_id").notNull().references(() => ropaActivities.id),
+  departmentId: text("department_id").notNull().references(() => departments.id),
+  title: text("title").notNull(),
+  purpose: text("purpose").notNull(),
+  dataCategories: jsonb("data_categories").$type<string[]>().notNull().default([]),
+  body: text("body").notNull(),
+  locale: text("locale").notNull().default("id"),
+  version: integer("version").notNull().default(1),
+  status: text("status", { enum: ["Draft", "Active", "Retired"] }).notNull().default("Draft"),
+  effectiveAt: text("effective_at"),
+  createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+  updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const consentRecords = pgTable("consent_records", {
+  id: text("id").primaryKey(),
+  templateId: text("template_id").notNull().references(() => consentTemplates.id),
+  ropaId: text("ropa_id").notNull().references(() => ropaActivities.id),
+  departmentId: text("department_id").notNull().references(() => departments.id),
+  subjectReference: text("subject_reference").notNull(),
+  status: text("status", { enum: ["Granted", "Withdrawn", "Expired", "Rejected"] }).notNull().default("Granted"),
+  grantedAt: text("granted_at"),
+  withdrawnAt: text("withdrawn_at"),
+  sourceChannel: text("source_channel").notNull().default("Manual"),
+  version: integer("version").notNull().default(1),
+  notes: text("notes").notNull().default(""),
+  createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const consentEvents = pgTable("consent_events", {
+  id: text("id").primaryKey(),
+  consentRecordId: text("consent_record_id").notNull().references(() => consentRecords.id, { onDelete: "cascade" }),
+  eventType: text("event_type").notNull(),
+  actorId: text("actor_id").references(() => users.id, { onDelete: "set null" }),
+  eventAt: text("event_at").notNull(),
+  channel: text("channel").notNull().default("Manual"),
+  note: text("note").notNull().default(""),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+});
+
+export const consentTasks = pgTable("consent_tasks", {
+  id: text("id").primaryKey(),
+  consentRecordId: text("consent_record_id").notNull().references(() => consentRecords.id, { onDelete: "cascade" }),
+  taskType: text("task_type").notNull(),
+  departmentId: text("department_id").notNull().references(() => departments.id),
+  ownerId: text("owner_id").references(() => users.id, { onDelete: "set null" }),
+  supportingOwner: text("supporting_owner").notNull().default(""),
+  dueAt: text("due_at"),
+  status: text("status").notNull().default("Open"),
+  note: text("note").notNull().default(""),
+  createdAt: text("created_at").notNull(),
+  completedAt: text("completed_at"),
+});
+
+export const consentPreferenceTokens = pgTable("consent_preference_tokens", {
+  id: text("id").primaryKey(),
+  consentRecordId: text("consent_record_id").notNull().references(() => consentRecords.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  purpose: text("purpose").notNull().default("preference"),
+  expiresAt: text("expires_at").notNull(),
+  usedAt: text("used_at"),
+  revokedAt: text("revoked_at"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const dsrRequests = pgTable("dsr_requests", {
+  id: text("id").primaryKey(),
+  requestNumber: text("request_number").notNull().unique(),
+  subjectReference: text("subject_reference").notNull(),
+  requestType: text("request_type").notNull(),
+  ropaId: text("ropa_id").references(() => ropaActivities.id, { onDelete: "set null" }),
+  departmentId: text("department_id").references(() => departments.id, { onDelete: "set null" }),
+  status: text("status").notNull().default("New"),
+  identityVerificationStatus: text("identity_verification_status").notNull().default("Unverified"),
+  verificationMethod: text("verification_method"),
+  verifiedAt: text("verified_at"),
+  verifiedBy: text("verified_by").references(() => users.id, { onDelete: "set null" }),
+  verificationNote: text("verification_note").notNull().default(""),
+  submittedAt: text("submitted_at").notNull(),
+  dueAt: text("due_at").notNull(),
+  closedAt: text("closed_at"),
+  assignedOwnerId: text("assigned_owner_id").references(() => users.id, { onDelete: "set null" }),
+  responseChannel: text("response_channel").notNull(),
+  subjectMessage: text("subject_message").notNull(),
+  internalNotes: text("internal_notes").notNull().default(""),
+  responseBody: text("response_body").notNull().default(""),
+  responseLocale: text("response_locale").notNull().default("id"),
+  createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const dsrEvents = pgTable("dsr_events", {
+  id: text("id").primaryKey(),
+  requestId: text("request_id").notNull().references(() => dsrRequests.id, { onDelete: "cascade" }),
+  eventType: text("event_type").notNull(),
+  actorId: text("actor_id").references(() => users.id, { onDelete: "set null" }),
+  timestamp: text("timestamp").notNull(),
+  note: text("note").notNull().default(""),
+  previousStatus: text("previous_status"),
+  nextStatus: text("next_status"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+});
+
+export const dsrTasks = pgTable("dsr_tasks", {
+  id: text("id").primaryKey(),
+  requestId: text("request_id").notNull().references(() => dsrRequests.id, { onDelete: "cascade" }),
+  taskType: text("task_type").notNull(),
+  ownerId: text("owner_id").references(() => users.id, { onDelete: "set null" }),
+  supportingOwner: text("supporting_owner").notNull().default(""),
+  dueAt: text("due_at"),
+  status: text("status").notNull().default("Open"),
+  dependency: text("dependency").notNull().default(""),
+  completionNote: text("completion_note").notNull().default(""),
+  evidenceReference: text("evidence_reference").notNull().default(""),
+  createdAt: text("created_at").notNull(),
+  completedAt: text("completed_at"),
+});
+
+export const dsrPublicTokens = pgTable("dsr_public_tokens", {
+  id: text("id").primaryKey(),
+  requestId: text("request_id").references(() => dsrRequests.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  purpose: text("purpose").notNull(),
+  expiresAt: text("expires_at").notNull(),
+  usedAt: text("used_at"),
+  revokedAt: text("revoked_at"),
+  createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: text("created_at").notNull(),
+});
+
+export const dsrResponseTemplates = pgTable("dsr_response_templates", {
+  id: text("id").primaryKey(),
+  requestType: text("request_type").notNull(),
+  locale: text("locale").notNull(),
+  version: integer("version").notNull().default(1),
+  body: text("body").notNull(),
+  status: text("status").notNull().default("Draft"),
+  createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+  updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
 export const departmentsRelations = relations(departments, ({ many }) => ({
   users: many(users),
   ropaActivities: many(ropaActivities),

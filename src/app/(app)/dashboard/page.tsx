@@ -27,6 +27,7 @@ import { translate, type Locale, type TranslationKey } from "@/lib/i18n";
 import { formatDate } from "@/lib/utils";
 import { OperationalInbox } from "@/components/operational-inbox";
 import { operationalInboxQuery, readOperationalQuery, type OperationalInboxData, type SearchValues } from "@/lib/operational-dashboard";
+import { getDsrDashboardSummary } from "@/lib/consent-dsr";
 
 export const dynamic = "force-dynamic";
 
@@ -71,11 +72,20 @@ async function DashboardContent({ locale, filters }: { locale: Locale; filters: 
   const t = createT(locale);
   const viewer = await requireViewer();
   const summary = await getDashboardSummary(toAccessScope(viewer));
+  const dsrSummary = await getDsrDashboardSummary(toAccessScope(viewer));
   const inbox = await readOperationalQuery<OperationalInboxData>(operationalInboxQuery(toAccessScope(viewer), filters));
 
   return (
     <>
       <OperationalInbox data={inbox} locale={locale} filters={filters} />
+      <section className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+        <DashboardOperationalCard label="Open DSR" value={dsrSummary.open} href="/dsr" />
+        <DashboardOperationalCard label="Due Soon" value={dsrSummary.dueSoon} href="/dsr?status=In%20Progress" />
+        <DashboardOperationalCard label="Overdue" value={dsrSummary.overdue} href="/dsr?overdue=true" />
+        <DashboardOperationalCard label="Waiting for Unit" value={dsrSummary.waitingForUnit} href="/dsr?status=Waiting%20for%20Unit" />
+        <DashboardOperationalCard label="Waiting for Subject" value={dsrSummary.waitingForSubject} href="/dsr?status=Waiting%20for%20Subject" />
+        <DashboardOperationalCard label="Closed DSR" value={dsrSummary.closed} href="/dsr?status=Closed" />
+      </section>
       <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-6">
         <MetricCard
           icon={<FileText className="h-5 w-5" />}
@@ -376,6 +386,10 @@ async function DashboardContent({ locale, filters }: { locale: Locale; filters: 
       </section>
     </>
   );
+}
+
+function DashboardOperationalCard({ label, value, href }: { label: string; value: number; href: string }) {
+  return <Link href={href} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">{label}</p><p className="mt-2 text-2xl font-bold text-slate-950">{value}</p></Link>;
 }
 
 function DashboardSkeleton() {
