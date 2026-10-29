@@ -22,6 +22,7 @@ const now = () => new Date().toISOString();
 const id = () => randomUUID();
 const token = () => randomBytes(32).toString("base64url");
 const hashToken = (value: string) => createHash("sha256").update(value).digest("hex");
+const subjectReference = () => `SUB-${new Date().getFullYear()}-${randomBytes(5).toString("hex").toUpperCase()}`;
 
 function scopeCondition(scope: AccessScope) {
   if (scope.role === "MasterAdmin" || scope.role === "DPO") return undefined;
@@ -54,6 +55,9 @@ export async function listDsrRequests(scope: AccessScope, filters: {
     id: dsrRequests.id,
     requestNumber: dsrRequests.requestNumber,
     subjectReference: dsrRequests.subjectReference,
+    subjectName: dsrRequests.subjectName,
+    subjectEmail: dsrRequests.subjectEmail,
+    subjectPhone: dsrRequests.subjectPhone,
     requestType: dsrRequests.requestType,
     departmentId: dsrRequests.departmentId,
     status: dsrRequests.status,
@@ -95,7 +99,10 @@ export async function getDsrRequest(idValue: string, scope: AccessScope) {
 }
 
 export async function createDsrRequest(input: {
-  subjectReference: string;
+  subjectReference?: string;
+  subjectName: string;
+  subjectEmail?: string;
+  subjectPhone?: string;
   requestType: string;
   departmentId?: string | null;
   ropaId?: string | null;
@@ -106,8 +113,8 @@ export async function createDsrRequest(input: {
   dueDays?: number;
 }, scope?: AccessScope) {
   await ensureDatabase();
-  if (!input.subjectReference.trim() || !input.responseChannel.trim() || !input.subjectMessage.trim()) {
-    throw new Error("Pseudonymous reference, response channel, and request description are required");
+  if (!input.subjectName.trim() || (!input.subjectEmail?.trim() && !input.subjectPhone?.trim()) || !input.responseChannel.trim() || !input.subjectMessage.trim()) {
+    throw new Error("Name, email or phone, response channel, and request description are required");
   }
   if (!DSR_REQUEST_TYPES.includes(input.requestType as DsrRequestType)) throw new Error("Invalid request type");
   const departmentId = scope?.isDemo ? scope.departmentId ?? null : input.departmentId ?? null;
@@ -118,11 +125,15 @@ export async function createDsrRequest(input: {
   }
   const timestamp = now();
   const requestId = id();
+  const generatedSubjectReference = subjectReference();
   const requestNumber = `DSR-${new Date().getFullYear()}-${randomBytes(4).toString("hex").toUpperCase()}`;
   const [created] = await db.insert(dsrRequests).values({
     id: requestId,
     requestNumber,
-    subjectReference: input.subjectReference.trim(),
+    subjectReference: generatedSubjectReference,
+    subjectName: input.subjectName.trim(),
+    subjectEmail: input.subjectEmail?.trim() ?? "",
+    subjectPhone: input.subjectPhone?.trim() ?? "",
     requestType: input.requestType,
     departmentId,
     ropaId: input.ropaId ?? null,
@@ -140,13 +151,13 @@ export async function createDsrRequest(input: {
     id: id(), requestId, eventType: "Request Submitted", timestamp,
     note: "Request received.", nextStatus: "New", metadata: {}, actorId: input.createdBy ?? null,
   });
-  if (input.requestType === "Withdrawal of Consent") await handleConsentWithdrawal(input.subjectReference, requestId, input.createdBy ?? null, departmentId);
+  if (input.requestType === "Withdrawal of Consent") await handleConsentWithdrawal({ subjectReference: generatedSubjectReference, subjectEmail: input.subjectEmail, subjectPhone: input.subjectPhone }, requestId, input.createdBy ?? null, departmentId);
   return created;
 }
 
-async function handleConsentWithdrawal(subjectReference: string, requestId: string, actorId: string | null, departmentId: string | null) {
+async function handleConsentWithdrawal(identity: { subjectReference: string; subjectEmail?: string; subjectPhone?: string }, requestId: string, actorId: string | null, departmentId: string | null) {
   const matches = await db.select().from(consentRecords).where(and(
-    eq(consentRecords.subjectReference, subjectReference.trim()),
+    identity.subjectEmail?.trim() ? eq(consentRecords.subjectEmail, identity.subjectEmail.trim()) : identity.subjectPhone?.trim() ? eq(consentRecords.subjectPhone, identity.subjectPhone.trim()) : eq(consentRecords.subjectReference, identity.subjectReference),
     eq(consentRecords.status, "Granted"),
     departmentId ? eq(consentRecords.departmentId, departmentId) : undefined,
   ));
@@ -232,8 +243,9 @@ export async function createConsentRecord(input: typeof consentRecords.$inferIns
   assertDepartment(scope, input.departmentId);
   const [ropa] = await db.select({ departmentId: ropaActivities.departmentId }).from(ropaActivities).where(eq(ropaActivities.id, input.ropaId));
   if (!ropa || ropa.departmentId !== input.departmentId) throw new Error("RoPA activity is outside department scope");
+  if (!(input.subjectName ?? "").trim() || (!(input.subjectEmail ?? "").trim() && !(input.subjectPhone ?? "").trim())) throw new Error("Name, email or phone is required for verification");
   const timestamp = now();
-  const [record] = await db.insert(consentRecords).values({ ...input, id: input.id ?? id(), updatedAt: timestamp }).returning();
+  const [record] = await db.insert(consentRecords).values({ ...input, subjectReference: subjectReference(), id: input.id ?? id(), updatedAt: timestamp }).returning();
   await db.insert(consentEvents).values({ id: id(), consentRecordId: record.id, eventType: "Granted", actorId: scope.userId ?? null, eventAt: timestamp, channel: input.sourceChannel ?? "Manual", note: "Consent recorded.", metadata: {} });
   return record;
 }
